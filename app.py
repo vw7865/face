@@ -818,7 +818,12 @@ def sanitize_for_json(obj):
         return obj
 
 def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male'):
-    """Calculate all facial metrics"""
+    """Calculate all facial metrics
+    
+    Note: side_landmarks is currently accepted but not used in calculations.
+    Future versions can use side profile for more accurate 3D metrics like
+    nose projection, mandible angle, and chin-neck angle.
+    """
     try:
         ipd = calculate_ipd(front_landmarks)
         
