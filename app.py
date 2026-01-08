@@ -245,15 +245,26 @@ def calculate_canthal_tilt(landmarks, gender='Male'):
         tilt_right = np.degrees(np.arctan2(v_right[1], v_right[0]))
         
         tilt = (tilt_left + tilt_right) / 2
+        
+        # Debug logging
+        print(f"DEBUG - Canthal tilt: left={tilt_left:.2f}°, right={tilt_right:.2f}°, avg={tilt:.2f}°")
+        
         if np.isnan(tilt) or np.isinf(tilt):
             return 50.0
         
-        # Wider range to account for neutral/slightly negative tilts
-        # Positive tilt (upturned) is generally preferred, but neutral is also fine
-        # Use wider range: -5 to 15 degrees (allows for slight downturns too)
-        ideal_min, ideal_max = (-5, 15) if gender == 'Male' else (-3, 12)
-        return score_metric(tilt, ideal_min, ideal_max)
-    except:
+        # Very wide range - most faces have tilt between -10 and 20 degrees
+        # Positive tilt (upturned) is preferred, but neutral/slightly negative is also normal
+        # Use very wide range: -10 to 20 degrees
+        ideal_min, ideal_max = (-10, 20) if gender == 'Male' else (-8, 18)
+        
+        # Ensure minimum score is at least 40 for any reasonable tilt
+        score = score_metric(tilt, ideal_min, ideal_max)
+        if score < 40 and -15 < tilt < 25:  # If tilt is in reasonable human range, boost score
+            score = max(score, 40.0)
+        
+        return score
+    except Exception as e:
+        print(f"ERROR calculating canthal tilt: {e}")
         return 50.0
 
 def calculate_eyelid_exposure(landmarks, ipd):
@@ -442,8 +453,8 @@ def calculate_fwhr(landmarks):
         if np.isnan(fwhr) or np.isinf(fwhr):
             return 50.0
         
-        # Ideal range: 1.8-2.2 for males, 1.7-2.0 for females
-        ideal_min, ideal_max = (1.8, 2.2) if True else (1.7, 2.0)  # Default to male
+        # Wider range - fWHR typically 1.5-2.5 for normal faces
+        ideal_min, ideal_max = (1.6, 2.4) if True else (1.5, 2.3)  # Default to male
         return score_metric(fwhr, ideal_min, ideal_max)
     except:
         return 50.0
@@ -468,8 +479,8 @@ def calculate_compactness(landmarks):
         if np.isnan(compactness) or np.isinf(compactness):
             return 50.0
         
-        # Ideal range: 1.2-1.4 (taller than wide)
-        return score_metric(compactness, 1.2, 1.4)
+        # Wider range - compactness typically 1.0-1.6 for normal faces
+        return score_metric(compactness, 1.1, 1.5)
     except:
         return 50.0
 
@@ -525,8 +536,8 @@ def calculate_mandible(landmarks, ipd):
         if np.isnan(mandible_ratio) or np.isinf(mandible_ratio):
             return 50.0
         
-        # Ideal range: 0.35-0.45
-        return score_metric(mandible_ratio, 0.35, 0.45)
+        # Wider range - mandible ratio typically 0.25-0.50 for normal faces
+        return score_metric(mandible_ratio, 0.30, 0.50)
     except:
         return 50.0
 
