@@ -239,32 +239,37 @@ def calculate_canthal_tilt(landmarks, gender='Male'):
         right_inner = landmarks[LANDMARKS['right_eye_inner']]
         
         v_left = left_inner - left_outer
-        tilt_left = np.degrees(np.arctan2(v_left[1], v_left[0]))
-        
         v_right = right_inner - right_outer
-        tilt_right = np.degrees(np.arctan2(v_right[1], v_right[0]))
         
+        tilt_left = np.degrees(np.arctan2(v_left[1], v_left[0]))
+        tilt_right = np.degrees(np.arctan2(v_right[1], v_right[0]))
         tilt = (tilt_left + tilt_right) / 2
         
         # Debug logging
-        print(f"DEBUG - Canthal tilt: left={tilt_left:.2f}°, right={tilt_right:.2f}°, avg={tilt:.2f}°")
+        print(f"[TILT DEBUG] left={tilt_left:.2f}°, right={tilt_right:.2f}°, avg={tilt:.2f}°")
         
         if np.isnan(tilt) or np.isinf(tilt):
+            print(f"[TILT DEBUG] Invalid tilt (NaN/Inf), returning 50.0")
             return 50.0
         
         # Very wide range - most faces have tilt between -10 and 20 degrees
         # Positive tilt (upturned) is preferred, but neutral/slightly negative is also normal
-        # Use very wide range: -10 to 20 degrees
         ideal_min, ideal_max = (-10, 20) if gender == 'Male' else (-8, 18)
-        
-        # Ensure minimum score is at least 40 for any reasonable tilt
         score = score_metric(tilt, ideal_min, ideal_max)
-        if score < 40 and -15 < tilt < 25:  # If tilt is in reasonable human range, boost score
-            score = max(score, 40.0)
         
-        return score
+        # If tilt is in any remotely human range, clamp to at least 40
+        if -45 < tilt < 45:
+            score = max(score, 40.0)
+            print(f"[TILT DEBUG] Tilt in human range, clamped score to at least 40.0")
+        
+        # Final safety clamp
+        final_score = float(np.clip(score, 0.0, 100.0))
+        print(f"[TILT DEBUG] Final score: {final_score:.1f}")
+        return final_score
     except Exception as e:
         print(f"ERROR calculating canthal tilt: {e}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 def calculate_eyelid_exposure(landmarks, ipd):
