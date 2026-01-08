@@ -576,7 +576,8 @@ def calculate_ascension_date():
     # Add 30-180 days from today
     days = np.random.randint(30, 180)
     date = datetime.now() + timedelta(days=days)
-    return date.strftime('%Y-%m-%dT%H:%M:%SZ')
+    # Return ISO8601 format that iOS can parse
+    return date.isoformat() + 'Z'
 
 def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male'):
     """Calculate all facial metrics"""
