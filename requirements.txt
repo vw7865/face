@@ -3,9 +3,9 @@ wheel
 pip>=23.0
 Flask==3.0.0
 flask-cors==4.0.0
-numpy==1.24.3
-opencv-python==4.8.1.78
-Pillow==10.1.0
+numpy>=1.24.0,<2.0.0
+opencv-python>=4.8.0
+Pillow>=10.0.0
 mediapipe==0.10.31
 gunicorn==21.2.0
 
