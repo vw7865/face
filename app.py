@@ -734,7 +734,7 @@ def generate_mock_results(gender='Male'):
             'bloat': rand_score(),
             'boneMass': rand_score()
         },
-        'ascensionDate': calculate_ascension_date()
+        'ascensionDate': (datetime.now() + timedelta(days=random.randint(30, 180))).isoformat() + 'Z'
     }
 
 @app.route('/api/analyze-face', methods=['POST'])
