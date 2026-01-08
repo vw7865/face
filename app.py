@@ -248,8 +248,10 @@ def calculate_canthal_tilt(landmarks, gender='Male'):
         if np.isnan(tilt) or np.isinf(tilt):
             return 50.0
         
-        # Ideal range: 5-12° for males, 3-10° for females
-        ideal_min, ideal_max = (5, 12) if gender == 'Male' else (3, 10)
+        # Wider range to account for neutral/slightly negative tilts
+        # Positive tilt (upturned) is generally preferred, but neutral is also fine
+        # Use wider range: -5 to 15 degrees (allows for slight downturns too)
+        ideal_min, ideal_max = (-5, 15) if gender == 'Male' else (-3, 12)
         return score_metric(tilt, ideal_min, ideal_max)
     except:
         return 50.0
@@ -344,8 +346,9 @@ def calculate_cheekbones(landmarks, ipd):
         if np.isnan(bizygomatic_norm) or np.isinf(bizygomatic_norm):
             return 50.0
         
-        # Ideal range depends on gender
-        return score_metric(bizygomatic_norm, 0.85, 1.05)
+        # Calibrated range based on actual MediaPipe normalized values (typically 3-7)
+        # Use wider range to avoid zero scores
+        return score_metric(bizygomatic_norm, 3.5, 6.0)
     except:
         return 50.0
 
@@ -360,8 +363,9 @@ def calculate_maxilla_projection(landmarks, ipd):
         if np.isnan(projection_norm) or np.isinf(projection_norm):
             return 50.0
         
-        # Ideal range: 0.15-0.25
-        return score_metric(projection_norm, 0.15, 0.25)
+        # Calibrated range - z values normalized by IPD are typically larger
+        # Use wider range to avoid zero scores
+        return score_metric(projection_norm, 0.5, 3.0)
     except:
         return 50.0
 
@@ -387,9 +391,9 @@ def calculate_nose_metrics(landmarks, ipd):
         if np.isnan(nose_ratio) or np.isnan(nose_proj_norm):
             return 50.0
         
-        # Combine length and projection scores
-        length_score = score_metric(nose_ratio, 0.30, 0.35)
-        proj_score = score_metric(nose_proj_norm, 0.12, 0.20)
+        # Calibrated ranges - nose ratio is reasonable, but projection needs wider range
+        length_score = score_metric(nose_ratio, 0.25, 0.40)
+        proj_score = score_metric(nose_proj_norm, 0.3, 2.5)
         
         result = (length_score + proj_score) / 2
         return result if not (np.isnan(result) or np.isinf(result)) else 50.0
@@ -558,8 +562,8 @@ def calculate_ramus(landmarks, ipd):
         if np.isnan(ramus_norm) or np.isinf(ramus_norm):
             return 50.0
         
-        # Ideal range: 0.25-0.35
-        return score_metric(ramus_norm, 0.25, 0.35)
+        # Calibrated range - normalized values are typically larger
+        return score_metric(ramus_norm, 1.5, 4.5)
     except:
         return 50.0
 
@@ -607,8 +611,8 @@ def calculate_jaw_width(landmarks, ipd):
         if np.isnan(jaw_ratio) or np.isinf(jaw_ratio):
             return 50.0
         
-        # Ideal range: 0.65-0.75
-        return score_metric(jaw_ratio, 0.65, 0.75)
+        # Calibrated range - wider to avoid zeros
+        return score_metric(jaw_ratio, 0.55, 0.85)
     except:
         return 50.0
 
@@ -647,8 +651,8 @@ def calculate_forehead_projection(landmarks, ipd):
         if np.isnan(projection_norm) or np.isinf(projection_norm):
             return 50.0
         
-        # Ideal range: 0.10-0.20
-        return score_metric(projection_norm, 0.10, 0.20)
+        # Calibrated range - z values normalized by IPD are typically larger
+        return score_metric(projection_norm, 0.3, 2.5)
     except:
         return 50.0
 
@@ -720,8 +724,8 @@ def calculate_neck_width(landmarks, ipd):
         if np.isnan(neck_norm) or np.isinf(neck_norm):
             return 50.0
         
-        # Ideal range: 0.40-0.50
-        return score_metric(neck_norm, 0.40, 0.50)
+        # Calibrated range - normalized values are typically larger
+        return score_metric(neck_norm, 2.0, 5.0)
     except:
         return 50.0
 
@@ -748,8 +752,8 @@ def calculate_bone_mass(landmarks, ipd):
         if np.isnan(bone_mass_norm) or np.isinf(bone_mass_norm):
             return 50.0
         
-        # Ideal range: 0.70-0.90
-        return score_metric(bone_mass_norm, 0.70, 0.90)
+        # Calibrated range - normalized values are typically 3-6
+        return score_metric(bone_mass_norm, 3.0, 6.5)
     except:
         return 50.0
 
