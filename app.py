@@ -579,6 +579,19 @@ def calculate_ascension_date():
     # Return ISO8601 format that iOS can parse
     return date.isoformat() + 'Z'
 
+def sanitize_for_json(obj):
+    """Replace NaN, Infinity with None (becomes null in JSON)"""
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(item) for item in obj]
+    elif isinstance(obj, float):
+        if np.isnan(obj) or np.isinf(obj):
+            return None
+        return obj
+    else:
+        return obj
+
 def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male'):
     """Calculate all facial metrics"""
     ipd = calculate_ipd(front_landmarks)
@@ -752,6 +765,8 @@ def analyze_face():
             # Fallback to mock results
             print("WARNING: MediaPipe not available, using mock results")
             results = generate_mock_results(gender)
+            # Sanitize NaN/Inf values to None (null in JSON)
+            results = sanitize_for_json(results)
             return jsonify(results), 200
         
         # Read image bytes
@@ -777,6 +792,9 @@ def analyze_face():
         
         # Calculate all metrics
         results = calculate_all_metrics(front_landmarks, side_landmarks, gender)
+        
+        # Sanitize NaN/Inf values to None (null in JSON)
+        results = sanitize_for_json(results)
         
         return jsonify(results), 200
         
