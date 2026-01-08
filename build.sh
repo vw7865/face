@@ -18,18 +18,12 @@ apt-get install -y -qq libglib2.0-0 libgomp1 || echo "System deps optional"
 echo "=== Installing numpy first (MediaPipe dependency) ==="
 pip install "numpy>=1.24.0,<2.0.0"
 
-echo "=== Installing MediaPipe with verbose output ==="
-pip install --verbose mediapipe==0.10.31 2>&1 | tee /tmp/mediapipe_install.log || {
+echo "=== Installing MediaPipe 0.10.21 (with solutions API) ==="
+pip install --verbose mediapipe==0.10.21 2>&1 | tee /tmp/mediapipe_install.log || {
     echo "=== MediaPipe install failed, checking logs ==="
     cat /tmp/mediapipe_install.log
-    echo "=== Trying without version pin ==="
-    pip install --verbose mediapipe 2>&1 | tee /tmp/mediapipe_install2.log || {
-        echo "=== Trying latest version ==="
-        pip install --verbose --upgrade mediapipe 2>&1 | tee /tmp/mediapipe_install3.log || {
-            echo "ERROR: All MediaPipe installation attempts failed"
-            echo "This is OK - app will use mock results"
-        }
-    }
+    echo "ERROR: MediaPipe installation failed"
+    exit 1
 }
 
 echo "=== Verifying MediaPipe installation ==="

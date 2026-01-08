@@ -17,10 +17,13 @@ import os
 mp = None
 try:
     import mediapipe as mp
-    print(f"MediaPipe imported successfully, version: {getattr(mp, '__version__', 'unknown')}")
-    # Verify MediaPipe is properly installed
+    mp_version = getattr(mp, '__version__', 'unknown')
+    print(f"MediaPipe imported successfully, version: {mp_version}")
+    # Verify MediaPipe is properly installed (0.10.21 has solutions, 0.10.31+ doesn't)
     if not hasattr(mp, 'solutions'):
-        print("WARNING: MediaPipe imported but 'solutions' attribute missing")
+        print(f"WARNING: MediaPipe {mp_version} imported but 'solutions' attribute missing")
+        print("This means you're using MediaPipe 0.10.30+ which removed solutions API")
+        print("Downgrade to 0.10.21 or update to use Tasks API")
         mp = None
     else:
         print("MediaPipe solutions module available")
