@@ -14,13 +14,22 @@ from PIL import Image
 import os
 
 # Try to import MediaPipe with better error handling
+mp = None
 try:
     import mediapipe as mp
+    print(f"MediaPipe imported successfully, version: {getattr(mp, '__version__', 'unknown')}")
     # Verify MediaPipe is properly installed
     if not hasattr(mp, 'solutions'):
-        raise ImportError("MediaPipe solutions module not available")
+        print("WARNING: MediaPipe imported but 'solutions' attribute missing")
+        mp = None
+    else:
+        print("MediaPipe solutions module available")
 except ImportError as e:
-    print(f"Warning: MediaPipe import failed: {e}")
+    print(f"ERROR: MediaPipe import failed: {e}")
+    print(f"Python path: {os.sys.path}")
+    mp = None
+except Exception as e:
+    print(f"ERROR: Unexpected error importing MediaPipe: {e}")
     mp = None
 
 app = Flask(__name__)
@@ -708,7 +717,14 @@ def analyze_face():
 
 @app.route('/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'healthy'}), 200
+    """Health check endpoint with MediaPipe status"""
+    status = {
+        'status': 'healthy',
+        'mediapipe_installed': mp is not None,
+        'mediapipe_has_solutions': mp is not None and hasattr(mp, 'solutions') if mp else False,
+        'python_version': os.sys.version
+    }
+    return jsonify(status), 200
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
