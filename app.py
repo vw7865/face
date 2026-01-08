@@ -7,12 +7,21 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import cv2
 import numpy as np
-import mediapipe as mp
 from datetime import datetime, timedelta
 import base64
 from io import BytesIO
 from PIL import Image
 import os
+
+# Try to import MediaPipe with better error handling
+try:
+    import mediapipe as mp
+    # Verify MediaPipe is properly installed
+    if not hasattr(mp, 'solutions'):
+        raise ImportError("MediaPipe solutions module not available")
+except ImportError as e:
+    print(f"Warning: MediaPipe import failed: {e}")
+    mp = None
 
 app = Flask(__name__)
 CORS(app)
@@ -24,7 +33,11 @@ def get_face_mesh():
     """Lazy initialization of MediaPipe Face Mesh"""
     global face_mesh
     if face_mesh is None:
+        if mp is None:
+            raise RuntimeError("MediaPipe is not installed. Please install it with: pip install mediapipe")
         try:
+            if not hasattr(mp, 'solutions'):
+                raise RuntimeError("MediaPipe solutions module not available. MediaPipe may not be installed correctly.")
             mp_face_mesh = mp.solutions.face_mesh
             face_mesh = mp_face_mesh.FaceMesh(
                 static_image_mode=True,
@@ -33,7 +46,7 @@ def get_face_mesh():
                 min_detection_confidence=0.5
             )
         except AttributeError as e:
-            raise RuntimeError(f"MediaPipe not properly installed: {e}. Please ensure mediapipe is correctly installed.")
+            raise RuntimeError(f"MediaPipe not properly installed: {e}. Try: pip install --upgrade mediapipe")
     return face_mesh
 
 # MediaPipe landmark indices (468 points)
