@@ -869,6 +869,15 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male'):
         ) / 6
         
         psl = (eyes_avg + midface_avg + lower_third_avg + upper_third_avg + misc_avg) / 5
+        
+        # Gentle rescaling to make scores more intuitive
+        # Maps 50 -> 50, but pushes higher scores up slightly (70 -> 74, 75 -> 81)
+        def rescale_psl(raw_psl):
+            if raw_psl <= 50:
+                return raw_psl
+            return float(np.clip(50 + 1.2 * (raw_psl - 50), 0, 100))
+        
+        psl = rescale_psl(psl)
         potential = psl * 1.05  # Slightly higher potential
         
         # Ensure no NaN values
