@@ -159,23 +159,50 @@ def angle_between_vectors(v1, v2):
     except:
         return 0.0
 
-def score_metric(value, ideal_min, ideal_max, method='gaussian'):
-    """Convert raw metric value to 0-100 score"""
+def score_metric(value, ideal_min, ideal_max, method='linear'):
+    """Convert raw metric value to 0-100 score
+    
+    Uses a more lenient scoring system that doesn't punish normal variations.
+    """
     try:
         if np.isnan(value) or np.isinf(value):
             return 50.0
-        if method == 'gaussian':
+        
+        # Use linear scoring by default - more forgiving and realistic
+        if method == 'linear':
             center = (ideal_min + ideal_max) / 2
-            std = (ideal_max - ideal_min) / 4
-            score = 100 * np.exp(-0.5 * ((value - center) / std) ** 2)
-            return float(np.clip(score, 0, 100))
-        else:  # linear
-            if value < ideal_min:
-                return float(max(0, 100 * (value / ideal_min)))
+            range_size = ideal_max - ideal_min
+            
+            # Create a wider acceptable range (2x the ideal range)
+            acceptable_min = ideal_min - range_size * 0.5
+            acceptable_max = ideal_max + range_size * 0.5
+            
+            if value < acceptable_min:
+                # Below acceptable range - scale from 0 to 50
+                ratio = value / acceptable_min if acceptable_min > 0 else 0
+                return float(np.clip(50 * ratio, 0, 50))
+            elif value > acceptable_max:
+                # Above acceptable range - scale from 50 to 0
+                excess = (value - acceptable_max) / acceptable_max if acceptable_max > 0 else 0
+                return float(np.clip(50 - 50 * excess, 0, 50))
+            elif value < ideal_min:
+                # Between acceptable_min and ideal_min - scale from 50 to 100
+                ratio = (value - acceptable_min) / (ideal_min - acceptable_min) if (ideal_min - acceptable_min) > 0 else 0
+                return float(50 + 50 * ratio)
             elif value > ideal_max:
-                return float(max(0, 100 - 100 * ((value - ideal_max) / ideal_max)))
+                # Between ideal_max and acceptable_max - scale from 100 to 50
+                ratio = (acceptable_max - value) / (acceptable_max - ideal_max) if (acceptable_max - ideal_max) > 0 else 0
+                return float(50 + 50 * ratio)
             else:
+                # Within ideal range - perfect score
                 return 100.0
+        else:  # gaussian (kept for backwards compatibility, but much wider)
+            center = (ideal_min + ideal_max) / 2
+            # Make std much wider - use /1.5 instead of /4 for more lenient scoring
+            std = (ideal_max - ideal_min) / 1.5
+            score = 100 * np.exp(-0.5 * ((value - center) / std) ** 2)
+            # Ensure minimum score is at least 20 for any valid value
+            return float(np.clip(max(score, 20.0), 0, 100))
     except:
         return 50.0
 
