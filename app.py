@@ -17,14 +17,24 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-# Initialize MediaPipe Face Mesh
-mp_face_mesh = mp.solutions.face_mesh
-face_mesh = mp_face_mesh.FaceMesh(
-    static_image_mode=True,
-    max_num_faces=1,
-    refine_landmarks=True,
-    min_detection_confidence=0.5
-)
+# Initialize MediaPipe Face Mesh (lazy initialization)
+face_mesh = None
+
+def get_face_mesh():
+    """Lazy initialization of MediaPipe Face Mesh"""
+    global face_mesh
+    if face_mesh is None:
+        try:
+            mp_face_mesh = mp.solutions.face_mesh
+            face_mesh = mp_face_mesh.FaceMesh(
+                static_image_mode=True,
+                max_num_faces=1,
+                refine_landmarks=True,
+                min_detection_confidence=0.5
+            )
+        except AttributeError as e:
+            raise RuntimeError(f"MediaPipe not properly installed: {e}. Please ensure mediapipe is correctly installed.")
+    return face_mesh
 
 # MediaPipe landmark indices (468 points)
 # Key landmarks for calculations
@@ -94,7 +104,8 @@ def image_from_bytes(image_bytes):
 
 def get_landmarks(image_rgb):
     """Extract face mesh landmarks"""
-    results = face_mesh.process(image_rgb)
+    mesh = get_face_mesh()
+    results = mesh.process(image_rgb)
     if not results.multi_face_landmarks:
         return None
     

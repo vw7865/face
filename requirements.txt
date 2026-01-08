@@ -1,10 +1,10 @@
-setuptools
+setuptools>=65.0.0
 wheel
 Flask==3.0.0
 flask-cors==4.0.0
-numpy
-opencv-python-headless
-Pillow
-mediapipe
+numpy>=1.24.0,<2.0.0
+opencv-python-headless>=4.8.0
+Pillow>=10.0.0
+mediapipe==0.10.31
 gunicorn==21.2.0
 
