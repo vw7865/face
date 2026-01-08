@@ -3,7 +3,7 @@ wheel
 pip>=24.0
 Flask==3.0.0
 flask-cors==4.0.0
-numpy>=2.0.0
+numpy<2.0.0
 opencv-python-headless>=4.9.0
 Pillow>=10.4.0
 mediapipe==0.10.31
