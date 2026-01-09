@@ -902,14 +902,23 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
             calculate_bone_mass(front_landmarks, ipd)
         ) / 6
         
-        # Calculate raw PSL without any rescaling or inflation
         # Calculate geometric PSL (based on facial measurements)
         geometric_psl = (eyes_avg + midface_avg + lower_third_avg + upper_third_avg + misc_avg) / 5.0
         
-        # Note: FaceStats attractiveness scoring is prepared but not yet fully implemented
-        # When implemented, it will combine geometric PSL with holistic attractiveness
-        # For now, use geometric PSL only
-        psl = geometric_psl
+        # Calculate holistic attractiveness score using multiple models (FaceStats + Beauty-classifier)
+        # This provides a more robust, modern attractiveness score with calibration
+        attractiveness_score = None
+        if front_image_array is not None:
+            attractiveness_score = calculate_attractiveness_score(front_image_array)
+        
+        # Combine geometric PSL with holistic attractiveness
+        # Weight: 60% geometric, 40% holistic attractiveness
+        if attractiveness_score is not None:
+            psl = 0.6 * geometric_psl + 0.4 * attractiveness_score
+            print(f"Combined PSL: {psl:.1f} (geometric: {geometric_psl:.1f}, attractiveness: {attractiveness_score:.1f})")
+        else:
+            psl = geometric_psl
+            print(f"Using geometric PSL only: {psl:.1f}")
         
         # Potential is same as PSL (no artificial boost)
         # In the future, you could add a small fixed offset like psl + 5 if desired
