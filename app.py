@@ -13,6 +13,15 @@ from io import BytesIO
 from PIL import Image
 import os
 
+# DeepFace for gender detection (97%+ accuracy)
+try:
+    from deepface import DeepFace
+    DEEPFACE_AVAILABLE = True
+    print("DeepFace imported successfully for gender detection")
+except ImportError:
+    DEEPFACE_AVAILABLE = False
+    print("WARNING: DeepFace not available. Gender detection will fall back to user input.")
+
 # Try to import MediaPipe with better error handling
 mp = None
 try:
@@ -939,6 +948,39 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male'):
         # This will be caught by the error handler in analyze_face()
         raise Exception(f"Failed to calculate metrics: {e}")
 
+def detect_gender_from_image(image_array):
+    """Detect gender from image using DeepFace (97%+ accuracy)"""
+    try:
+        if not DEEPFACE_AVAILABLE:
+            return None
+        
+        # DeepFace expects BGR format (OpenCV default)
+        # Analyze gender with high accuracy backend
+        result = DeepFace.analyze(
+            img_path=image_array,
+            actions=['gender'],
+            enforce_detection=False,  # Don't fail if face detection is uncertain
+            detector_backend='retinaface',  # Most accurate detector
+            silent=True  # Suppress verbose output
+        )
+        
+        # Handle both single dict and list of dicts
+        if isinstance(result, list):
+            result = result[0]
+        
+        # Extract gender prediction
+        gender_pred = result.get('gender', '')
+        # DeepFace returns "Man" or "Woman"
+        if 'Man' in gender_pred or 'Male' in gender_pred:
+            return 'Male'
+        elif 'Woman' in gender_pred or 'Female' in gender_pred:
+            return 'Female'
+        else:
+            return None
+    except Exception as e:
+        print(f"Gender detection error: {e}")
+        return None
+
 @app.route('/api/analyze-face', methods=['POST'])
 def analyze_face():
     try:
@@ -947,7 +989,41 @@ def analyze_face():
         
         front_file = request.files['front_image']
         side_file = request.files['side_image']
-        gender = request.form.get('gender', 'Male')
+        
+        # Get gender from form, or detect automatically
+        gender = request.form.get('gender', '').strip()
+        
+        # If gender not provided, detect it from the front image
+        if not gender:
+            try:
+                # Read front image for gender detection
+                front_image_bytes = front_file.read()
+                front_file.seek(0)  # Reset file pointer for later use
+                
+                # Convert to numpy array for DeepFace
+                nparr = np.frombuffer(front_image_bytes, np.uint8)
+                front_image_cv = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                
+                if front_image_cv is None:
+                    return jsonify({'error': 'Invalid front image format'}), 400
+                
+                # Detect gender
+                detected_gender = detect_gender_from_image(front_image_cv)
+                
+                if detected_gender:
+                    gender = detected_gender
+                    print(f"✅ Gender detected automatically: {gender}")
+                else:
+                    # Fallback to Male if detection fails
+                    gender = 'Male'
+                    print(f"⚠️ Gender detection failed, defaulting to: {gender}")
+            except Exception as e:
+                print(f"⚠️ Gender detection error: {e}, defaulting to Male")
+                gender = 'Male'
+        
+        # Ensure gender is valid
+        if gender not in ['Male', 'Female']:
+            gender = 'Male'  # Default fallback
         
         # Check if MediaPipe is available
         if mp is None or not hasattr(mp, 'solutions'):
