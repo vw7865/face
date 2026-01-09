@@ -259,20 +259,22 @@ def calculate_canthal_tilt(landmarks, gender='Male'):
             print(f"[TILT DEBUG] Invalid tilt (NaN/Inf), returning 50.0")
             return 50.0
         
-        # Very wide range - most faces have tilt between -10 and 20 degrees
-        # Positive tilt (upturned) is preferred, but neutral/slightly negative is also normal
-        ideal_min, ideal_max = (-10, 20) if gender == 'Male' else (-8, 18)
-        score = score_metric(tilt, ideal_min, ideal_max)
+        # Simple, predictable linear mapping instead of complex score_metric
+        # This gives more variation and better reflects actual tilt angles
+        # Mapping:
+        # -10°  -> 50 (slightly downturned)
+        #  0°   -> 60 (neutral)
+        # +10°  -> 75 (slightly upturned - preferred)
+        # +20°+ -> 90+ (very upturned - ideal)
+        # Formula: baseline + (tilt * slope)
+        baseline = 60.0  # Neutral tilt gets 60
+        slope = 1.5      # Each degree adds 1.5 points (positive tilt preferred)
         
-        # Hard minimum guard after score_metric - catch ALL cases regardless of tilt range
-        # This ensures we never return values that round to 0.0
-        if score < 40:
-            score = 40.0
-            print(f"[TILT DEBUG] Score was below 40, clamped to 40.0")
+        score = baseline + (tilt * slope)
         
-        # Final safety clamp - ensure minimum score of 40 (never return 0 for any face)
+        # Ensure score is in reasonable range (40-100)
         final_score = float(np.clip(score, 40.0, 100.0))
-        print(f"[TILT DEBUG] FINAL tilt={tilt:.2f}°, score={score:.1f}, final={final_score:.1f}")
+        print(f"[TILT DEBUG] FINAL tilt={tilt:.2f}°, score={final_score:.1f}")
         return final_score
     except Exception as e:
         print(f"ERROR calculating canthal tilt: {e}")
