@@ -1036,19 +1036,25 @@ def calculate_facestats_score(image_array):
         
         # Define CLIP embedding function directly to avoid polars dependency
         # Use module-level globals for CLIP model (lazy loading)
+        # Note: _CLIP_MODEL and _CLIP_PROCESSOR are defined at module level above
         def get_clip_embedding_local(image_path, model_name="openai/clip-vit-base-patch32"):
             """Extract CLIP embedding for an image (L2-normalized)"""
-            # Access module-level globals
-            import app as app_module
-            if app_module._CLIP_MODEL is None or app_module._CLIP_PROCESSOR is None:
-                app_module._CLIP_MODEL = CLIPModel.from_pretrained(model_name)
-                app_module._CLIP_PROCESSOR = CLIPProcessor.from_pretrained(model_name)
-                app_module._CLIP_MODEL.eval()
+            # Access module-level globals - they're defined at top of file
+            # We need to reference them from the outer scope
+            clip_model = globals().get('_CLIP_MODEL')
+            clip_processor = globals().get('_CLIP_PROCESSOR')
+            
+            if clip_model is None or clip_processor is None:
+                globals()['_CLIP_MODEL'] = CLIPModel.from_pretrained(model_name)
+                globals()['_CLIP_PROCESSOR'] = CLIPProcessor.from_pretrained(model_name)
+                globals()['_CLIP_MODEL'].eval()
+                clip_model = globals()['_CLIP_MODEL']
+                clip_processor = globals()['_CLIP_PROCESSOR']
             
             img = Image.open(image_path).convert("RGB")
-            inputs = app_module._CLIP_PROCESSOR(images=img, return_tensors="pt")
+            inputs = clip_processor(images=img, return_tensors="pt")
             with torch.no_grad():
-                features = app_module._CLIP_MODEL.get_image_features(**inputs)
+                features = clip_model.get_image_features(**inputs)
             vec = features[0].cpu().numpy()
             return vec / (np.linalg.norm(vec) + 1e-8)
         
