@@ -208,3 +208,4 @@ __marimo__/
 # Model files are now tracked via Git LFS
 # models/*.pt
 # !models/.gitkeep
+src_facestats_models/
