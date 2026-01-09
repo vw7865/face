@@ -1099,14 +1099,21 @@ def calculate_facestats_score(image_array):
             embedding = get_clip_embedding_local(tmp_path)
             embedding = np.array(embedding).reshape(1, -1)
             
-            # Load attractiveness regressor
-            model_path = Path(__file__).parent / "facestats" / "models" / "attractiveness_regressor.pt"
-            if not model_path.exists():
-                # Try alternative path
-                model_path = Path(__file__).parent / "facestats" / "src" / "models" / "attractiveness_regressor.pt"
+            # Load attractiveness regressor - check multiple possible locations
+            possible_paths = [
+                Path(__file__).parent / "models" / "attractiveness_regressor.pt",  # Direct models folder
+                Path(__file__).parent / "facestats" / "models" / "attractiveness_regressor.pt",
+                Path(__file__).parent / "facestats" / "src" / "models" / "attractiveness_regressor.pt",
+            ]
             
-            if not model_path.exists():
-                print(f"FaceStats model not found at {model_path}")
+            model_path = None
+            for path in possible_paths:
+                if path.exists():
+                    model_path = path
+                    break
+            
+            if model_path is None:
+                print(f"FaceStats model not found. Checked: {[str(p) for p in possible_paths]}")
                 return None
             
             # Load model - use AttractivenessRegressorV1 (matches saved checkpoint)
@@ -1227,10 +1234,20 @@ def calculate_beauty_classifier_score(image_array):
         # Preprocess image
         image_tensor = transform(pil_image).unsqueeze(0)
         
-        # Load model
-        model_path = Path(__file__).parent / "beauty-classifier" / "models" / "attractiveness_classifier.pt"
-        if not model_path.exists():
-            print(f"Beauty-classifier model not found at {model_path}")
+        # Load model - check multiple possible locations
+        possible_paths = [
+            Path(__file__).parent / "models" / "attractiveness_classifier.pt",  # Direct models folder
+            Path(__file__).parent / "beauty-classifier" / "models" / "attractiveness_classifier.pt",
+        ]
+        
+        model_path = None
+        for path in possible_paths:
+            if path.exists():
+                model_path = path
+                break
+        
+        if model_path is None:
+            print(f"Beauty-classifier model not found. Checked: {[str(p) for p in possible_paths]}")
             print("Note: Model file may need to be pulled using DVC: dvc pull models/attractiveness_classifier.pt.dvc")
             return None
         
