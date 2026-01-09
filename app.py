@@ -1035,10 +1035,13 @@ def calculate_facestats_score(image_array):
             sys.path.insert(0, str(facestats_path))
         
         # Define CLIP embedding function directly to avoid polars dependency
+        # Use module-level globals for CLIP model (lazy loading)
+        global _CLIP_MODEL, _CLIP_PROCESSOR
+        
         def get_clip_embedding_local(image_path, model_name="openai/clip-vit-base-patch32"):
             """Extract CLIP embedding for an image (L2-normalized)"""
-            global _CLIP_MODEL, _CLIP_PROCESSOR
-            if '_CLIP_MODEL' not in globals() or _CLIP_MODEL is None:
+            nonlocal _CLIP_MODEL, _CLIP_PROCESSOR
+            if _CLIP_MODEL is None or _CLIP_PROCESSOR is None:
                 _CLIP_MODEL = CLIPModel.from_pretrained(model_name)
                 _CLIP_PROCESSOR = CLIPProcessor.from_pretrained(model_name)
                 _CLIP_MODEL.eval()
