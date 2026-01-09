@@ -4,9 +4,6 @@ services:
     env: python
     buildCommand: ./build.sh
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 1
-    envVars:
-      - key: PORT
-        value: 5000
-    healthCheckPath: /health
+    healthCheckPath: /
 
 

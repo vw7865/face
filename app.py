@@ -13,14 +13,20 @@ from io import BytesIO
 from PIL import Image
 import os
 
-# DeepFace for gender detection (97%+ accuracy)
-try:
-    from deepface import DeepFace
-    DEEPFACE_AVAILABLE = True
-    print("DeepFace imported successfully for gender detection")
-except ImportError:
-    DEEPFACE_AVAILABLE = False
-    print("WARNING: DeepFace not available. Gender detection will fall back to user input.")
+# DeepFace for gender detection (97%+ accuracy) - lazy import to avoid blocking startup
+DEEPFACE_AVAILABLE = None  # Will be checked on first use
+def check_deepface_available():
+    """Lazy check for DeepFace availability"""
+    global DEEPFACE_AVAILABLE
+    if DEEPFACE_AVAILABLE is None:
+        try:
+            import deepface
+            DEEPFACE_AVAILABLE = True
+            print("DeepFace available for gender detection")
+        except ImportError:
+            DEEPFACE_AVAILABLE = False
+            print("WARNING: DeepFace not available. Gender detection will fall back to user input.")
+    return DEEPFACE_AVAILABLE
 
 # FaceStats-style attractiveness scoring (CLIP + MLP)
 try:
@@ -68,6 +74,12 @@ except Exception as e:
 
 app = Flask(__name__)
 CORS(app)
+
+# Add a simple root route that responds immediately (for Render port detection)
+@app.route('/', methods=['GET'])
+def root():
+    """Simple root endpoint for health checks"""
+    return jsonify({'status': 'ok', 'message': 'LooksMax AI Backend is running'}), 200
 
 # Initialize MediaPipe Face Mesh (lazy initialization)
 face_mesh = None
@@ -1332,8 +1344,11 @@ def calculate_beauty_classifier_score(image_array):
 def detect_gender_from_image(image_array):
     """Detect gender from image using DeepFace (97%+ accuracy)"""
     try:
-        if not DEEPFACE_AVAILABLE:
+        if not check_deepface_available():
             return None
+        
+        # Lazy import DeepFace to avoid blocking startup
+        from deepface import DeepFace
         
         # DeepFace expects BGR format (OpenCV default)
         # Analyze gender with high accuracy backend
@@ -1468,7 +1483,7 @@ def health():
         'status': 'healthy',
         'mediapipe_installed': mp is not None,
         'mediapipe_has_solutions': mp is not None and hasattr(mp, 'solutions'),
-        'deepface_available': DEEPFACE_AVAILABLE,
+        'deepface_available': check_deepface_available(),
         'facestats_available': ATTRACTIVENESS_AVAILABLE,
         'beauty_classifier_available': BEAUTY_CLASSIFIER_AVAILABLE,
         'python_version': str(os.sys.version),
