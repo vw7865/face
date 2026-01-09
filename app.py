@@ -264,14 +264,14 @@ def calculate_canthal_tilt(landmarks, gender='Male'):
         ideal_min, ideal_max = (-10, 20) if gender == 'Male' else (-8, 18)
         score = score_metric(tilt, ideal_min, ideal_max)
         
-        # Widen the safety clamp to cover most reasonable human face angles
-        # This ensures we never return 0 for normal faces
-        if -80 < tilt < 80:
-            score = max(score, 40.0)
-            print(f"[TILT DEBUG] Tilt in human range, clamped score to at least 40.0")
+        # Hard minimum guard after score_metric - catch ALL cases regardless of tilt range
+        # This ensures we never return values that round to 0.0
+        if score < 40:
+            score = 40.0
+            print(f"[TILT DEBUG] Score was below 40, clamped to 40.0")
         
-        # Final safety clamp - ensure minimum score of 30 (never return 0 for any face)
-        final_score = float(np.clip(score, 30.0, 100.0))
+        # Final safety clamp - ensure minimum score of 40 (never return 0 for any face)
+        final_score = float(np.clip(score, 40.0, 100.0))
         print(f"[TILT DEBUG] FINAL tilt={tilt:.2f}°, score={score:.1f}, final={final_score:.1f}")
         return final_score
     except Exception as e:
