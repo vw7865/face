@@ -1022,6 +1022,7 @@ def calculate_facestats_score(image_array):
     """Calculate attractiveness using FaceStats (CLIP + MLP)"""
     try:
         if not ATTRACTIVENESS_AVAILABLE:
+            print("⚠️ FaceStats: Dependencies not available (torch/transformers)")
             return None
         
         import sys
@@ -1029,7 +1030,9 @@ def calculate_facestats_score(image_array):
         import tempfile
         import os
         
-        # Add FaceStats src to path
+        print("🔍 FaceStats: Starting model loading...")
+        
+        # Add FaceStats src to path (optional, for imports)
         facestats_path = Path(__file__).parent / "facestats" / "src"
         if str(facestats_path) not in sys.path:
             sys.path.insert(0, str(facestats_path))
@@ -1100,33 +1103,48 @@ def calculate_facestats_score(image_array):
             embedding = np.array(embedding).reshape(1, -1)
             
             # Load attractiveness regressor - check multiple possible locations
+            base_path = Path(__file__).parent
             possible_paths = [
-                Path(__file__).parent / "models" / "attractiveness_regressor.pt",  # Direct models folder
-                Path(__file__).parent / "facestats" / "models" / "attractiveness_regressor.pt",
-                Path(__file__).parent / "facestats" / "src" / "models" / "attractiveness_regressor.pt",
+                base_path / "models" / "attractiveness_regressor.pt",  # Primary: direct models folder
+                base_path / "facestats" / "models" / "attractiveness_regressor.pt",
+                base_path / "facestats" / "src" / "models" / "attractiveness_regressor.pt",
+                base_path / "src_facestats_models" / "attractiveness_regressor.pt",
             ]
             
             model_path = None
+            print(f"🔍 FaceStats: Checking {len(possible_paths)} possible model locations...")
             for path in possible_paths:
-                if path.exists():
+                abs_path = path.resolve()
+                exists = path.exists()
+                print(f"   {'✅' if exists else '❌'} {abs_path}")
+                if exists:
                     model_path = path
+                    size_mb = path.stat().st_size / (1024 * 1024)
+                    print(f"✅ FaceStats: Model found at {abs_path} ({size_mb:.1f} MB)")
                     break
             
             if model_path is None:
-                print(f"FaceStats model not found. Checked: {[str(p) for p in possible_paths]}")
+                print(f"❌ FaceStats: Model not found in any location!")
+                print(f"   Checked paths:")
+                for p in possible_paths:
+                    print(f"     - {p.resolve()}")
                 return None
             
             # Load model - use AttractivenessRegressorV1 (matches saved checkpoint)
+            print(f"📦 FaceStats: Loading model from {model_path.name}...")
             regressor = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=64)
             state_dict = torch.load(model_path, map_location='cpu')
             regressor.load_state_dict(state_dict, strict=True)
             regressor.eval()
+            print("✅ FaceStats: Model loaded successfully")
             
             # Predict attractiveness (raw score)
+            print("🔮 FaceStats: Running prediction...")
             with torch.no_grad():
                 embedding_tensor = torch.FloatTensor(embedding)
                 prediction = regressor(embedding_tensor)
                 raw_score = prediction.item()
+            print(f"📊 FaceStats: Raw prediction = {raw_score:.4f}")
             
             # FaceStats model outputs raw predictions that may need scaling
             # Based on typical MLP regression, scores might be in various ranges
@@ -1147,7 +1165,7 @@ def calculate_facestats_score(image_array):
                 score = raw_score
             
             score = float(np.clip(score, 0.0, 100.0))
-            print(f"FaceStats raw score: {raw_score:.2f}, normalized: {score:.2f}")
+            print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f})")
             return score
             
         finally:
@@ -1156,7 +1174,7 @@ def calculate_facestats_score(image_array):
                 os.unlink(tmp_path)
         
     except Exception as e:
-        print(f"FaceStats scoring error: {e}")
+        print(f"❌ FaceStats scoring error: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -1174,7 +1192,10 @@ def calculate_beauty_classifier_score(image_array):
     """
     try:
         if not BEAUTY_CLASSIFIER_AVAILABLE:
+            print("⚠️ Beauty-classifier: Dependencies not available (torch/torchvision)")
             return None
+        
+        print("🔍 Beauty-classifier: Starting model loading...")
         
         import sys
         from pathlib import Path
@@ -1235,31 +1256,46 @@ def calculate_beauty_classifier_score(image_array):
         image_tensor = transform(pil_image).unsqueeze(0)
         
         # Load model - check multiple possible locations
+        base_path = Path(__file__).parent
         possible_paths = [
-            Path(__file__).parent / "models" / "attractiveness_classifier.pt",  # Direct models folder
-            Path(__file__).parent / "beauty-classifier" / "models" / "attractiveness_classifier.pt",
+            base_path / "models" / "attractiveness_classifier.pt",  # Primary: direct models folder
+            base_path / "beauty-classifier" / "models" / "attractiveness_classifier.pt",
         ]
         
         model_path = None
+        print(f"🔍 Beauty-classifier: Checking {len(possible_paths)} possible model locations...")
         for path in possible_paths:
-            if path.exists():
+            abs_path = path.resolve()
+            exists = path.exists()
+            print(f"   {'✅' if exists else '❌'} {abs_path}")
+            if exists:
                 model_path = path
+                size_mb = path.stat().st_size / (1024 * 1024)
+                print(f"✅ Beauty-classifier: Model found at {abs_path} ({size_mb:.1f} MB)")
                 break
         
         if model_path is None:
-            print(f"Beauty-classifier model not found. Checked: {[str(p) for p in possible_paths]}")
-            print("Note: Model file may need to be pulled using DVC: dvc pull models/attractiveness_classifier.pt.dvc")
+            print(f"❌ Beauty-classifier: Model not found in any location!")
+            print(f"   Checked paths:")
+            for p in possible_paths:
+                print(f"     - {p.resolve()}")
+            print("   Note: Model file may need to be pulled using DVC: dvc pull models/attractiveness_classifier.pt.dvc")
             return None
         
         # Initialize model
+        print(f"📦 Beauty-classifier: Loading model from {model_path.name}...")
         model = BeautyClassifierModel(out_features=512)
-        model.load_state_dict(torch.load(model_path, map_location='cpu'))
+        state_dict = torch.load(model_path, map_location='cpu')
+        model.load_state_dict(state_dict)
         model.eval()
+        print("✅ Beauty-classifier: Model loaded successfully")
         
         # Predict attractiveness (0-1 range, represents 1-5 scale)
+        print("🔮 Beauty-classifier: Running prediction...")
         with torch.no_grad():
             output = model(image_tensor)
             score_01 = output.item()  # 0-1 range
+        print(f"📊 Beauty-classifier: Raw prediction (0-1) = {score_01:.4f}")
         
         # Convert 0-1 to 1-5 scale: score_5 = 1 + 4 * score_01
         score_5 = 1.0 + 4.0 * score_01
@@ -1268,11 +1304,11 @@ def calculate_beauty_classifier_score(image_array):
         score_100 = (score_5 - 1.0) / 4.0 * 100.0
         
         score_100 = float(np.clip(score_100, 0.0, 100.0))
-        print(f"Beauty-classifier: raw={score_01:.3f}, 1-5 scale={score_5:.2f}, 0-100 scale={score_100:.1f}")
+        print(f"✅ Beauty-classifier: Final score = {score_100:.1f} (raw: {score_01:.4f}, 1-5: {score_5:.2f})")
         return score_100
         
     except Exception as e:
-        print(f"Beauty-classifier scoring error: {e}")
+        print(f"❌ Beauty-classifier scoring error: {e}")
         import traceback
         traceback.print_exc()
         return None
