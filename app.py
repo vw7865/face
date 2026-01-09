@@ -976,6 +976,93 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
         # This will be caught by the error handler in analyze_face()
         raise Exception(f"Failed to calculate metrics: {e}")
 
+def calculate_attractiveness_score(image_array):
+    """
+    Calculate holistic attractiveness score using multiple models for stability:
+    1. FaceStats (CLIP + MLP) - if available
+    2. Beauty-classifier (ResNet-50 on SCUT-FBP5500) - for calibration
+    
+    Returns average of available models, or None if none available.
+    Based on:
+    - FaceStats: https://github.com/jayklarin/FaceStats
+    - Beauty-classifier: https://github.com/okurki/beauty-classifier
+    """
+    scores = []
+    
+    # Try FaceStats (CLIP + MLP)
+    facestats_score = calculate_facestats_score(image_array)
+    if facestats_score is not None:
+        scores.append(facestats_score)
+        print(f"FaceStats score: {facestats_score:.1f}")
+    
+    # Try Beauty-classifier (ResNet-50)
+    beauty_score = calculate_beauty_classifier_score(image_array)
+    if beauty_score is not None:
+        scores.append(beauty_score)
+        print(f"Beauty-classifier score: {beauty_score:.1f}")
+    
+    # Return average if we have at least one score
+    if scores:
+        avg_score = sum(scores) / len(scores)
+        print(f"Average attractiveness score: {avg_score:.1f} (from {len(scores)} model(s))")
+        return avg_score
+    
+    return None
+
+def calculate_facestats_score(image_array):
+    """Calculate attractiveness using FaceStats (CLIP + MLP)"""
+    try:
+        if not ATTRACTIVENESS_AVAILABLE:
+            return None
+        
+        # TODO: Implement full FaceStats integration
+        # - Clone FaceStats repo or copy model files
+        # - Load CLIP model: CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+        # - Load MLP regressor: joblib.load("models/attractiveness_regressor.pt")
+        # - Extract embedding and predict
+        
+        return None
+    except Exception as e:
+        print(f"FaceStats scoring error: {e}")
+        return None
+
+def calculate_beauty_classifier_score(image_array):
+    """
+    Calculate attractiveness using beauty-classifier (ResNet-50 on SCUT-FBP5500)
+    Returns score on 0-100 scale (converted from 1-5 scale)
+    Based on: https://github.com/okurki/beauty-classifier
+    """
+    try:
+        if not BEAUTY_CLASSIFIER_AVAILABLE:
+            return None
+        
+        # TODO: Implement beauty-classifier integration
+        # 1. Load pre-trained ResNet-50 model (from beauty-classifier repo)
+        # 2. Preprocess image (resize to 350x350, normalize)
+        # 3. Predict attractiveness (1-5 scale)
+        # 4. Convert to 0-100 scale: score_100 = (score_5 - 1) / 4 * 100
+        
+        # Placeholder implementation:
+        # model = torch.load("models/beauty_classifier_resnet50.pt")
+        # model.eval()
+        # transform = transforms.Compose([
+        #     transforms.ToPILImage(),
+        #     transforms.Resize((350, 350)),
+        #     transforms.ToTensor(),
+        #     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        # ])
+        # image_tensor = transform(cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB))
+        # with torch.no_grad():
+        #     prediction = model(image_tensor.unsqueeze(0))
+        #     score_5 = prediction.item()  # 1-5 scale
+        #     score_100 = (score_5 - 1) / 4 * 100  # Convert to 0-100
+        #     return float(np.clip(score_100, 0.0, 100.0))
+        
+        return None
+    except Exception as e:
+        print(f"Beauty-classifier scoring error: {e}")
+        return None
+
 def detect_gender_from_image(image_array):
     """Detect gender from image using DeepFace (97%+ accuracy)"""
     try:
