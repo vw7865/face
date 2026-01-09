@@ -1036,7 +1036,21 @@ def calculate_facestats_score(image_array):
         
         # Import FaceStats modules
         from embeddings.embed_clip import get_clip_embedding
-        from attractiveness.scoring import AttractivenessRegressorV1
+        
+        # Define AttractivenessRegressorV1 directly to avoid polars dependency
+        class AttractivenessRegressorV1(torch.nn.Module):
+            """Matches the stored checkpoint: 512 → 256 → 64 → 1 with ReLU activations."""
+            def __init__(self, input_dim=512, hidden1=256, hidden2=64):
+                super().__init__()
+                self.net = torch.nn.Sequential(
+                    torch.nn.Linear(input_dim, hidden1),
+                    torch.nn.ReLU(),
+                    torch.nn.Linear(hidden1, hidden2),
+                    torch.nn.ReLU(),
+                    torch.nn.Linear(hidden2, 1),
+                )
+            def forward(self, x):
+                return self.net(x)
         
         # Convert numpy array to PIL Image
         from PIL import Image
