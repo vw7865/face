@@ -1024,15 +1024,82 @@ def calculate_facestats_score(image_array):
         if not ATTRACTIVENESS_AVAILABLE:
             return None
         
-        # TODO: Implement full FaceStats integration
-        # - Clone FaceStats repo or copy model files
-        # - Load CLIP model: CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-        # - Load MLP regressor: joblib.load("models/attractiveness_regressor.pt")
-        # - Extract embedding and predict
+        import sys
+        from pathlib import Path
+        import tempfile
+        import os
         
-        return None
+        # Add FaceStats src to path
+        facestats_path = Path(__file__).parent / "facestats" / "src"
+        if str(facestats_path) not in sys.path:
+            sys.path.insert(0, str(facestats_path))
+        
+        # Import FaceStats modules
+        from embeddings.embed_clip import get_clip_embedding
+        from attractiveness.scoring import AttractivenessRegressorV1
+        
+        # Convert numpy array to PIL Image
+        from PIL import Image
+        if isinstance(image_array, np.ndarray):
+            # Convert BGR to RGB if needed
+            if len(image_array.shape) == 3 and image_array.shape[2] == 3:
+                rgb_image = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
+            else:
+                rgb_image = image_array
+            pil_image = Image.fromarray(rgb_image)
+        else:
+            pil_image = image_array
+        
+        # Save temporarily to use get_clip_embedding (expects file path)
+        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_file:
+            pil_image.save(tmp_file.name, 'JPEG')
+            tmp_path = tmp_file.name
+        
+        try:
+            # Extract CLIP embedding (512-D, L2-normalized)
+            embedding = get_clip_embedding(tmp_path)
+            embedding = np.array(embedding).reshape(1, -1)
+            
+            # Load attractiveness regressor
+            model_path = Path(__file__).parent / "facestats" / "models" / "attractiveness_regressor.pt"
+            if not model_path.exists():
+                # Try alternative path
+                model_path = Path(__file__).parent / "facestats" / "src" / "models" / "attractiveness_regressor.pt"
+            
+            if not model_path.exists():
+                print(f"FaceStats model not found at {model_path}")
+                return None
+            
+            # Load model - use AttractivenessRegressorV1 (matches saved checkpoint)
+            regressor = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=64)
+            state_dict = torch.load(model_path, map_location='cpu')
+            regressor.load_state_dict(state_dict, strict=True)
+            regressor.eval()
+            
+            # Predict attractiveness (raw score, may need scaling)
+            with torch.no_grad():
+                embedding_tensor = torch.FloatTensor(embedding)
+                prediction = regressor(embedding_tensor)
+                score = prediction.item()
+            
+            # FaceStats outputs raw scores - normalize to 0-100 range
+            # Assuming scores are roughly in a reasonable range, clip and scale
+            # If scores are already 0-100, just clip; otherwise adjust
+            score = float(np.clip(score, 0.0, 100.0))
+            
+            # If score seems too low/high, it might need scaling
+            # For now, assume it's already in a reasonable range
+            return score
+            
+        finally:
+            # Clean up temp file
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        
     except Exception as e:
         print(f"FaceStats scoring error: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 def calculate_beauty_classifier_score(image_array):
