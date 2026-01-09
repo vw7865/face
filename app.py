@@ -831,7 +831,7 @@ def sanitize_for_json(obj):
     else:
         return obj
 
-def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male'):
+def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_image_array=None):
     """Calculate all facial metrics
     
     Note: side_landmarks is currently accepted but not used in calculations.
@@ -896,18 +896,10 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male'):
         # Calculate geometric PSL (based on facial measurements)
         geometric_psl = (eyes_avg + midface_avg + lower_third_avg + upper_third_avg + misc_avg) / 5.0
         
-        # Calculate holistic attractiveness score using CLIP + MLP (FaceStats-style)
-        # This provides a more robust, modern attractiveness score
-        attractiveness_score = calculate_attractiveness_score(front_image_array)
-        
-        # Combine geometric PSL with holistic attractiveness
-        # Weight: 60% geometric, 40% holistic attractiveness
-        if attractiveness_score is not None:
-            psl = 0.6 * geometric_psl + 0.4 * attractiveness_score
-            print(f"Combined PSL: {psl:.1f} (geometric: {geometric_psl:.1f}, attractiveness: {attractiveness_score:.1f})")
-        else:
-            psl = geometric_psl
-            print(f"Using geometric PSL only: {psl:.1f}")
+        # Note: FaceStats attractiveness scoring is prepared but not yet fully implemented
+        # When implemented, it will combine geometric PSL with holistic attractiveness
+        # For now, use geometric PSL only
+        psl = geometric_psl
         
         # Potential is same as PSL (no artificial boost)
         # In the future, you could add a small fixed offset like psl + 5 if desired
@@ -1080,9 +1072,12 @@ def analyze_face():
         if side_landmarks is None:
             return jsonify({'error': 'Face not detected in side image'}), 400
         
+        # Convert images to numpy arrays for potential attractiveness scoring
+        front_image_array = np.array(front_image)
+        
         # Calculate all metrics
         try:
-            results = calculate_all_metrics(front_landmarks, side_landmarks, gender)
+            results = calculate_all_metrics(front_landmarks, side_landmarks, gender, front_image_array)
         except Exception as e:
             print(f"ERROR calculating metrics: {e}")
             import traceback
