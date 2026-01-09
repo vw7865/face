@@ -1079,11 +1079,12 @@ def analyze_face():
 
 @app.route('/health', methods=['GET'])
 def health():
-    """Health check endpoint with MediaPipe status"""
+    """Health check endpoint with MediaPipe and DeepFace status"""
     status = {
         'status': 'healthy',
         'mediapipe_installed': mp is not None,
         'mediapipe_has_solutions': mp is not None and hasattr(mp, 'solutions'),
+        'deepface_available': DEEPFACE_AVAILABLE,
         'python_version': str(os.sys.version),
     }
     if mp is not None:
