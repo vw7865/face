@@ -1036,20 +1036,19 @@ def calculate_facestats_score(image_array):
         
         # Define CLIP embedding function directly to avoid polars dependency
         # Use module-level globals for CLIP model (lazy loading)
-        global _CLIP_MODEL, _CLIP_PROCESSOR
-        
         def get_clip_embedding_local(image_path, model_name="openai/clip-vit-base-patch32"):
             """Extract CLIP embedding for an image (L2-normalized)"""
-            nonlocal _CLIP_MODEL, _CLIP_PROCESSOR
-            if _CLIP_MODEL is None or _CLIP_PROCESSOR is None:
-                _CLIP_MODEL = CLIPModel.from_pretrained(model_name)
-                _CLIP_PROCESSOR = CLIPProcessor.from_pretrained(model_name)
-                _CLIP_MODEL.eval()
+            # Access module-level globals
+            import app as app_module
+            if app_module._CLIP_MODEL is None or app_module._CLIP_PROCESSOR is None:
+                app_module._CLIP_MODEL = CLIPModel.from_pretrained(model_name)
+                app_module._CLIP_PROCESSOR = CLIPProcessor.from_pretrained(model_name)
+                app_module._CLIP_MODEL.eval()
             
             img = Image.open(image_path).convert("RGB")
-            inputs = _CLIP_PROCESSOR(images=img, return_tensors="pt")
+            inputs = app_module._CLIP_PROCESSOR(images=img, return_tensors="pt")
             with torch.no_grad():
-                features = _CLIP_MODEL.get_image_features(**inputs)
+                features = app_module._CLIP_MODEL.get_image_features(**inputs)
             vec = features[0].cpu().numpy()
             return vec / (np.linalg.norm(vec) + 1e-8)
         
@@ -1110,19 +1109,32 @@ def calculate_facestats_score(image_array):
             regressor.load_state_dict(state_dict, strict=True)
             regressor.eval()
             
-            # Predict attractiveness (raw score, may need scaling)
+            # Predict attractiveness (raw score)
             with torch.no_grad():
                 embedding_tensor = torch.FloatTensor(embedding)
                 prediction = regressor(embedding_tensor)
-                score = prediction.item()
+                raw_score = prediction.item()
             
-            # FaceStats outputs raw scores - normalize to 0-100 range
-            # Assuming scores are roughly in a reasonable range, clip and scale
-            # If scores are already 0-100, just clip; otherwise adjust
+            # FaceStats model outputs raw predictions that may need scaling
+            # Based on typical MLP regression, scores might be in various ranges
+            # We'll normalize to 0-100 by assuming scores are roughly centered
+            # If raw scores are negative or very large, we'll scale them
+            
+            # Simple normalization: assume scores are roughly in -50 to 50 range
+            # Scale to 0-100: score_100 = (raw_score + 50) / 100 * 100
+            # But first check if it's already in a reasonable range
+            if raw_score < 0:
+                # Negative scores: map to 0-50
+                score = max(0.0, 50.0 + raw_score)
+            elif raw_score > 100:
+                # Very high scores: cap at 100
+                score = 100.0
+            else:
+                # Assume already in 0-100 range
+                score = raw_score
+            
             score = float(np.clip(score, 0.0, 100.0))
-            
-            # If score seems too low/high, it might need scaling
-            # For now, assume it's already in a reasonable range
+            print(f"FaceStats raw score: {raw_score:.2f}, normalized: {score:.2f}")
             return score
             
         finally:
