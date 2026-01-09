@@ -209,3 +209,4 @@ __marimo__/
 # models/*.pt
 # !models/.gitkeep
 src_facestats_models/
+models/attractiveness_classifier.pt
