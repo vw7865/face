@@ -62,27 +62,39 @@ def check_beauty_classifier_available():
             print("WARNING: Beauty-classifier dependencies not available.")
     return BEAUTY_CLASSIFIER_AVAILABLE
 
-# Try to import MediaPipe with better error handling
-mp = None
-try:
-    import mediapipe as mp
-    mp_version = getattr(mp, '__version__', 'unknown')
-    print(f"MediaPipe imported successfully, version: {mp_version}")
-    # Verify MediaPipe is properly installed (0.10.21 has solutions, 0.10.31+ doesn't)
-    if not hasattr(mp, 'solutions'):
-        print(f"WARNING: MediaPipe {mp_version} imported but 'solutions' attribute missing")
-        print("This means you're using MediaPipe 0.10.30+ which removed solutions API")
-        print("Downgrade to 0.10.21 or update to use Tasks API")
-        mp = None
-    else:
-        print("MediaPipe solutions module available")
-except ImportError as e:
-    print(f"ERROR: MediaPipe import failed: {e}")
-    print(f"Python path: {os.sys.path}")
-    mp = None
-except Exception as e:
-    print(f"ERROR: Unexpected error importing MediaPipe: {e}")
-    mp = None
+# MediaPipe - lazy import to prevent blocking startup
+_mp_module = None
+_mp_available = None
+
+def get_mediapipe():
+    """Lazy import MediaPipe - only loads when needed"""
+    global _mp_module, _mp_available
+    if _mp_available is None:
+        try:
+            import mediapipe as mp
+            mp_version = getattr(mp, '__version__', 'unknown')
+            print(f"MediaPipe imported successfully, version: {mp_version}")
+            # Verify MediaPipe is properly installed (0.10.21 has solutions, 0.10.31+ doesn't)
+            if not hasattr(mp, 'solutions'):
+                print(f"WARNING: MediaPipe {mp_version} imported but 'solutions' attribute missing")
+                print("This means you're using MediaPipe 0.10.30+ which removed solutions API")
+                print("Downgrade to 0.10.21 or update to use Tasks API")
+                _mp_module = None
+                _mp_available = False
+            else:
+                print("MediaPipe solutions module available")
+                _mp_module = mp
+                _mp_available = True
+        except ImportError as e:
+            print(f"ERROR: MediaPipe import failed: {e}")
+            print(f"Python path: {os.sys.path}")
+            _mp_module = None
+            _mp_available = False
+        except Exception as e:
+            print(f"ERROR: Unexpected error importing MediaPipe: {e}")
+            _mp_module = None
+            _mp_available = False
+    return _mp_module
 
 app = Flask(__name__)
 CORS(app)
@@ -100,6 +112,7 @@ def get_face_mesh():
     """Lazy initialization of MediaPipe Face Mesh"""
     global face_mesh
     if face_mesh is None:
+        mp = get_mediapipe()
         if mp is None:
             raise RuntimeError("MediaPipe is not installed. Please install it with: pip install mediapipe")
         try:
@@ -1434,6 +1447,7 @@ def analyze_face():
             gender = 'Male'  # Default fallback
         
         # Check if MediaPipe is available
+        mp = get_mediapipe()
         if mp is None or not hasattr(mp, 'solutions'):
             # In production, return error instead of mock results
             print("ERROR: MediaPipe not available")
@@ -1491,6 +1505,7 @@ def analyze_face():
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint with MediaPipe and DeepFace status"""
+    mp = get_mediapipe()
     status = {
         'status': 'healthy',
         'mediapipe_installed': mp is not None,
