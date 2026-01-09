@@ -49,4 +49,14 @@ except Exception as e:
 echo "=== Installing other requirements ==="
 pip install -r requirements.txt
 
+echo "=== Checking for model files ==="
+if [ -d "models" ]; then
+    echo "Models directory exists"
+    ls -lh models/*.pt 2>/dev/null || echo "No .pt model files found in models/"
+else
+    echo "⚠️  WARNING: models/ directory not found"
+    echo "   Model files may need to be downloaded separately"
+    mkdir -p models
+fi
+
 echo "=== Build complete ==="

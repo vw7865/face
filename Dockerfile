@@ -17,6 +17,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application
 COPY app.py .
 
+# Copy model files (if they exist in repo)
+# Note: Large model files may need to be downloaded during build
+COPY models/ ./models/ 2>/dev/null || echo "Models will be downloaded during build"
+
 # Expose port
 EXPOSE 5000
 
