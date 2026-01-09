@@ -1159,36 +1159,105 @@ def calculate_beauty_classifier_score(image_array):
     Calculate attractiveness using beauty-classifier (ResNet-50 on SCUT-FBP5500)
     Returns score on 0-100 scale (converted from 1-5 scale)
     Based on: https://github.com/okurki/beauty-classifier
+    
+    Model architecture:
+    - ResNet-50 (ImageNet pretrained, frozen)
+    - Custom FC: 2048 → 512 → 1 (with Sigmoid)
+    - Output: 0-1 (represents 1-5 attractiveness scale)
     """
     try:
         if not BEAUTY_CLASSIFIER_AVAILABLE:
             return None
         
-        # TODO: Implement beauty-classifier integration
-        # 1. Load pre-trained ResNet-50 model (from beauty-classifier repo)
-        # 2. Preprocess image (resize to 350x350, normalize)
-        # 3. Predict attractiveness (1-5 scale)
-        # 4. Convert to 0-100 scale: score_100 = (score_5 - 1) / 4 * 100
+        import sys
+        from pathlib import Path
+        import tempfile
+        import os
+        import torchvision.models as models
+        import torchvision.transforms as transforms
+        import torch.nn as nn
         
-        # Placeholder implementation:
-        # model = torch.load("models/beauty_classifier_resnet50.pt")
-        # model.eval()
-        # transform = transforms.Compose([
-        #     transforms.ToPILImage(),
-        #     transforms.Resize((350, 350)),
-        #     transforms.ToTensor(),
-        #     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        # ])
-        # image_tensor = transform(cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB))
-        # with torch.no_grad():
-        #     prediction = model(image_tensor.unsqueeze(0))
-        #     score_5 = prediction.item()  # 1-5 scale
-        #     score_100 = (score_5 - 1) / 4 * 100  # Convert to 0-100
-        #     return float(np.clip(score_100, 0.0, 100.0))
+        # Add beauty-classifier src to path
+        beauty_path = Path(__file__).parent / "beauty-classifier" / "src"
+        if str(beauty_path) not in sys.path:
+            sys.path.insert(0, str(beauty_path))
         
-        return None
+        # Define the model architecture (matches beauty-classifier)
+        class BeautyClassifierModel(nn.Module):
+            def __init__(self, out_features=512):
+                super().__init__()
+                # Load ResNet-50 with ImageNet weights
+                resnet = models.resnet50(weights="IMAGENET1K_V2")
+                # Freeze all parameters
+                for param in resnet.parameters():
+                    param.requires_grad = False
+                # Replace FC layer with custom head
+                resnet.fc = nn.Sequential(
+                    nn.Linear(resnet.fc.in_features, out_features),
+                    nn.ReLU(),
+                    nn.Dropout(0.3),
+                    nn.Linear(out_features, 1),
+                    nn.Sigmoid()  # Output 0-1 (represents 1-5 scale)
+                )
+                self.model = resnet
+            
+            def forward(self, x):
+                return self.model(x)
+        
+        # Convert numpy array to PIL Image
+        from PIL import Image
+        if isinstance(image_array, np.ndarray):
+            # Convert BGR to RGB if needed
+            if len(image_array.shape) == 3 and image_array.shape[2] == 3:
+                rgb_image = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
+            else:
+                rgb_image = image_array
+            pil_image = Image.fromarray(rgb_image)
+        else:
+            pil_image = image_array
+        
+        # Define image preprocessing (matches beauty-classifier)
+        transform = transforms.Compose([
+            transforms.Resize((224, 224)),  # ResNet-50 expects 224x224
+            transforms.Lambda(lambda x: x.convert("RGB") if x.mode != "RGB" else x),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        
+        # Preprocess image
+        image_tensor = transform(pil_image).unsqueeze(0)
+        
+        # Load model
+        model_path = Path(__file__).parent / "beauty-classifier" / "models" / "attractiveness_classifier.pt"
+        if not model_path.exists():
+            print(f"Beauty-classifier model not found at {model_path}")
+            print("Note: Model file may need to be pulled using DVC: dvc pull models/attractiveness_classifier.pt.dvc")
+            return None
+        
+        # Initialize model
+        model = BeautyClassifierModel(out_features=512)
+        model.load_state_dict(torch.load(model_path, map_location='cpu'))
+        model.eval()
+        
+        # Predict attractiveness (0-1 range, represents 1-5 scale)
+        with torch.no_grad():
+            output = model(image_tensor)
+            score_01 = output.item()  # 0-1 range
+        
+        # Convert 0-1 to 1-5 scale: score_5 = 1 + 4 * score_01
+        score_5 = 1.0 + 4.0 * score_01
+        
+        # Convert 1-5 to 0-100 scale: score_100 = (score_5 - 1) / 4 * 100
+        score_100 = (score_5 - 1.0) / 4.0 * 100.0
+        
+        score_100 = float(np.clip(score_100, 0.0, 100.0))
+        print(f"Beauty-classifier: raw={score_01:.3f}, 1-5 scale={score_5:.2f}, 0-100 scale={score_100:.1f}")
+        return score_100
+        
     except Exception as e:
         print(f"Beauty-classifier scoring error: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 def detect_gender_from_image(image_array):
