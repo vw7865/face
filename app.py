@@ -28,27 +28,39 @@ def check_deepface_available():
             print("WARNING: DeepFace not available. Gender detection will fall back to user input.")
     return DEEPFACE_AVAILABLE
 
-# FaceStats-style attractiveness scoring (CLIP + MLP)
-try:
-    import torch
-    from transformers import CLIPProcessor, CLIPModel
-    import torch.nn as nn
-    import joblib
-    ATTRACTIVENESS_AVAILABLE = True
-    print("FaceStats-style attractiveness scoring available")
-except ImportError:
-    ATTRACTIVENESS_AVAILABLE = False
-    print("WARNING: FaceStats attractiveness scoring dependencies not available.")
+# FaceStats-style attractiveness scoring (CLIP + MLP) - lazy import
+ATTRACTIVENESS_AVAILABLE = None
+def check_attractiveness_available():
+    """Lazy check for FaceStats dependencies"""
+    global ATTRACTIVENESS_AVAILABLE
+    if ATTRACTIVENESS_AVAILABLE is None:
+        try:
+            import torch
+            from transformers import CLIPProcessor, CLIPModel
+            import torch.nn as nn
+            import joblib
+            ATTRACTIVENESS_AVAILABLE = True
+            print("FaceStats-style attractiveness scoring available")
+        except ImportError:
+            ATTRACTIVENESS_AVAILABLE = False
+            print("WARNING: FaceStats attractiveness scoring dependencies not available.")
+    return ATTRACTIVENESS_AVAILABLE
 
-# Beauty-classifier (ResNet-50 on SCUT-FBP5500) for secondary/calibration scoring
-try:
-    import torchvision.models as models
-    import torchvision.transforms as transforms
-    BEAUTY_CLASSIFIER_AVAILABLE = True
-    print("Beauty-classifier (ResNet-50) available for calibration")
-except ImportError:
-    BEAUTY_CLASSIFIER_AVAILABLE = False
-    print("WARNING: Beauty-classifier dependencies not available.")
+# Beauty-classifier (ResNet-50 on SCUT-FBP5500) - lazy import
+BEAUTY_CLASSIFIER_AVAILABLE = None
+def check_beauty_classifier_available():
+    """Lazy check for beauty-classifier dependencies"""
+    global BEAUTY_CLASSIFIER_AVAILABLE
+    if BEAUTY_CLASSIFIER_AVAILABLE is None:
+        try:
+            import torchvision.models as models
+            import torchvision.transforms as transforms
+            BEAUTY_CLASSIFIER_AVAILABLE = True
+            print("Beauty-classifier (ResNet-50) available for calibration")
+        except ImportError:
+            BEAUTY_CLASSIFIER_AVAILABLE = False
+            print("WARNING: Beauty-classifier dependencies not available.")
+    return BEAUTY_CLASSIFIER_AVAILABLE
 
 # Try to import MediaPipe with better error handling
 mp = None
@@ -1049,7 +1061,7 @@ def calculate_attractiveness_score(image_array):
 def calculate_facestats_score(image_array):
     """Calculate attractiveness using FaceStats (CLIP + MLP)"""
     try:
-        if not ATTRACTIVENESS_AVAILABLE:
+        if not check_attractiveness_available():
             print("⚠️ FaceStats: Dependencies not available (torch/transformers)")
             return None
         
@@ -1219,7 +1231,7 @@ def calculate_beauty_classifier_score(image_array):
     - Output: 0-1 (represents 1-5 attractiveness scale)
     """
     try:
-        if not BEAUTY_CLASSIFIER_AVAILABLE:
+        if not check_beauty_classifier_available():
             print("⚠️ Beauty-classifier: Dependencies not available (torch/torchvision)")
             return None
         
@@ -1484,8 +1496,8 @@ def health():
         'mediapipe_installed': mp is not None,
         'mediapipe_has_solutions': mp is not None and hasattr(mp, 'solutions'),
         'deepface_available': check_deepface_available(),
-        'facestats_available': ATTRACTIVENESS_AVAILABLE,
-        'beauty_classifier_available': BEAUTY_CLASSIFIER_AVAILABLE,
+        'facestats_available': check_attractiveness_available(),
+        'beauty_classifier_available': check_beauty_classifier_available(),
         'python_version': str(os.sys.version),
     }
     if mp is not None:
