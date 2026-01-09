@@ -62,3 +62,4 @@ If MediaPipe still doesn't install:
 2. Try updating requirements.txt to use latest MediaPipe
 3. Railway's Nixpacks builder handles native deps better than Render
 
+
