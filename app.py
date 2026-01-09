@@ -162,47 +162,30 @@ def angle_between_vectors(v1, v2):
 def score_metric(value, ideal_min, ideal_max, method='linear'):
     """Convert raw metric value to 0-100 score
     
-    Uses a more lenient scoring system that doesn't punish normal variations.
+    More realistic scoring that provides better separation:
+    - 100 at center of ideal range
+    - 50 at the edges of ideal range
+    - Goes down toward 0 as you move further away
     """
     try:
         if np.isnan(value) or np.isinf(value):
             return 50.0
         
-        # Use linear scoring by default - more forgiving and realistic
-        if method == 'linear':
-            center = (ideal_min + ideal_max) / 2
-            range_size = ideal_max - ideal_min
-            
-            # Create a wider acceptable range (2x the ideal range)
-            acceptable_min = ideal_min - range_size * 0.5
-            acceptable_max = ideal_max + range_size * 0.5
-            
-            if value < acceptable_min:
-                # Below acceptable range - scale from 0 to 50
-                ratio = value / acceptable_min if acceptable_min > 0 else 0
-                return float(np.clip(50 * ratio, 0, 50))
-            elif value > acceptable_max:
-                # Above acceptable range - scale from 50 to 0
-                excess = (value - acceptable_max) / acceptable_max if acceptable_max > 0 else 0
-                return float(np.clip(50 - 50 * excess, 0, 50))
-            elif value < ideal_min:
-                # Between acceptable_min and ideal_min - scale from 50 to 100
-                ratio = (value - acceptable_min) / (ideal_min - acceptable_min) if (ideal_min - acceptable_min) > 0 else 0
-                return float(50 + 50 * ratio)
-            elif value > ideal_max:
-                # Between ideal_max and acceptable_max - scale from 100 to 50
-                ratio = (acceptable_max - value) / (acceptable_max - ideal_max) if (acceptable_max - ideal_max) > 0 else 0
-                return float(50 + 50 * ratio)
-            else:
-                # Within ideal range - perfect score
-                return 100.0
-        else:  # gaussian (kept for backwards compatibility, but much wider)
-            center = (ideal_min + ideal_max) / 2
-            # Make std much wider - use /1.5 instead of /4 for more lenient scoring
-            std = (ideal_max - ideal_min) / 1.5
-            score = 100 * np.exp(-0.5 * ((value - center) / std) ** 2)
-            # Ensure minimum score is at least 20 for any valid value
-            return float(np.clip(max(score, 20.0), 0, 100))
+        center = (ideal_min + ideal_max) / 2.0
+        half_range = (ideal_max - ideal_min) / 2.0
+        
+        if half_range <= 0:
+            return 50.0
+        
+        # Distance from center in "half-range units"
+        d = abs(value - center) / half_range
+        
+        if d <= 1.0:
+            # Inside the ideal window → 100 down to 50 (linear)
+            return float(100.0 - 50.0 * d)
+        else:
+            # Outside the ideal window → 50 down towards 0
+            return float(max(0.0, 50.0 - 20.0 * (d - 1.0)))
     except:
         return 50.0
 
@@ -259,21 +242,12 @@ def calculate_canthal_tilt(landmarks, gender='Male'):
             print(f"[TILT DEBUG] Invalid tilt (NaN/Inf), returning 50.0")
             return 50.0
         
-        # Simple, predictable linear mapping instead of complex score_metric
-        # This gives more variation and better reflects actual tilt angles
-        # Mapping:
-        # -10°  -> 50 (slightly downturned)
-        #  0°   -> 60 (neutral)
-        # +10°  -> 75 (slightly upturned - preferred)
-        # +20°+ -> 90+ (very upturned - ideal)
-        # Formula: baseline + (tilt * slope)
-        baseline = 60.0  # Neutral tilt gets 60
-        slope = 1.5      # Each degree adds 1.5 points (positive tilt preferred)
+        # Use realistic ideal range - positive tilt (upturned) is preferred
+        ideal_min, ideal_max = (-5, 10) if gender == 'Male' else (-3, 12)
+        score = score_metric(tilt, ideal_min, ideal_max)
         
-        score = baseline + (tilt * slope)
-        
-        # Ensure score is in reasonable range (40-100)
-        final_score = float(np.clip(score, 40.0, 100.0))
+        # No extra custom min clamp - let scores reflect actual geometry
+        final_score = float(np.clip(score, 0.0, 100.0))
         print(f"[TILT DEBUG] FINAL tilt={tilt:.2f}°, score={final_score:.1f}")
         return final_score
     except Exception as e:
@@ -339,24 +313,21 @@ def calculate_orbital_depth(landmarks, ipd):
 
 def calculate_eyebrow_density(landmarks):
     """Proxy for eyebrow density (placeholder - would need CNN in production)"""
-    try:
-        # For now, use brow width/height ratio as proxy
-        left_brow_width = euclidean_distance(
-            landmarks[LANDMARKS['left_brow_inner']],
-            landmarks[LANDMARKS['left_brow_outer']]
-        )
-        # Placeholder - would need actual brow thickness
-        return 75.0
-    except:
-        return 75.0
+    # Return neutral 50 instead of inflated 75
+    # TODO: Implement actual eyebrow density calculation
+    return 50.0
 
 def calculate_eyelash_density(landmarks):
     """Proxy for eyelash density (placeholder)"""
-    return 78.0
+    # Return neutral 50 instead of inflated 78
+    # TODO: Implement actual eyelash density calculation
+    return 50.0
 
 def calculate_under_eye_health(landmarks):
     """Proxy for under-eye health (placeholder - would need CNN)"""
-    return 80.0
+    # Return neutral 50 instead of inflated 80
+    # TODO: Implement actual under-eye health calculation
+    return 50.0
 
 # ========== MIDFACE METRICS ==========
 
@@ -665,7 +636,9 @@ def calculate_forehead_slope(landmarks):
 
 def calculate_norwood_stage(landmarks):
     """Calculate Norwood stage (hairline recession) - placeholder"""
-    return 85.0
+    # Return neutral 50 instead of inflated 85
+    # TODO: Implement actual Norwood stage calculation
+    return 50.0
 
 def calculate_forehead_projection(landmarks, ipd):
     """Calculate forehead projection"""
@@ -684,15 +657,21 @@ def calculate_forehead_projection(landmarks, ipd):
 
 def calculate_hairline_recession(landmarks):
     """Calculate hairline recession - placeholder"""
-    return 82.0
+    # Return neutral 50 instead of inflated 82
+    # TODO: Implement actual hairline recession calculation
+    return 50.0
 
 def calculate_hair_thinning(landmarks):
     """Calculate hair thinning - placeholder"""
-    return 80.0
+    # Return neutral 50 instead of inflated 80
+    # TODO: Implement actual hair thinning calculation
+    return 50.0
 
 def calculate_hairline_density(landmarks):
     """Calculate hairline density - placeholder"""
-    return 83.0
+    # Return neutral 50 instead of inflated 83
+    # TODO: Implement actual hairline density calculation
+    return 50.0
 
 # ========== MISCELLANEOUS METRICS ==========
 
@@ -757,7 +736,9 @@ def calculate_neck_width(landmarks, ipd):
 
 def calculate_bloat(landmarks):
     """Calculate facial bloat (soft tissue thickness) - placeholder"""
-    return 78.0
+    # Return neutral 50 instead of inflated 78
+    # TODO: Implement actual facial bloat calculation
+    return 50.0
 
 def calculate_bone_mass(landmarks, ipd):
     """Calculate bone mass proxy (facial structure)"""
@@ -785,7 +766,9 @@ def calculate_bone_mass(landmarks, ipd):
 
 def calculate_skin_quality(landmarks):
     """Calculate skin quality - placeholder (would need CNN)"""
-    return 84.0
+    # Return neutral 50 instead of inflated 84
+    # TODO: Implement actual skin quality calculation using CNN
+    return 50.0
 
 def calculate_harmony(landmarks):
     """Calculate facial harmony (meta-score)"""
@@ -888,17 +871,12 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male'):
             calculate_bone_mass(front_landmarks, ipd)
         ) / 6
         
-        psl = (eyes_avg + midface_avg + lower_third_avg + upper_third_avg + misc_avg) / 5
+        # Calculate raw PSL without any rescaling or inflation
+        psl = (eyes_avg + midface_avg + lower_third_avg + upper_third_avg + misc_avg) / 5.0
         
-        # Gentle rescaling to make scores more intuitive
-        # Maps 50 -> 50, but pushes higher scores up slightly (70 -> 74, 75 -> 81)
-        def rescale_psl(raw_psl):
-            if raw_psl <= 50:
-                return raw_psl
-            return float(np.clip(50 + 1.2 * (raw_psl - 50), 0, 100))
-        
-        psl = rescale_psl(psl)
-        potential = psl * 1.05  # Slightly higher potential
+        # Potential is same as PSL (no artificial boost)
+        # In the future, you could add a small fixed offset like psl + 5 if desired
+        potential = psl
         
         # Ensure no NaN values
         if np.isnan(psl) or np.isinf(psl):
@@ -957,8 +935,9 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male'):
         print(f"ERROR in calculate_all_metrics: {e}")
         import traceback
         traceback.print_exc()
-        # Return default values on error
-        return generate_mock_results(gender)
+        # Return error structure instead of mock results
+        # This will be caught by the error handler in analyze_face()
+        raise Exception(f"Failed to calculate metrics: {e}")
 
 def generate_mock_results(gender='Male'):
     """Generate mock results when MediaPipe fails"""
@@ -1023,12 +1002,11 @@ def analyze_face():
         
         # Check if MediaPipe is available
         if mp is None or not hasattr(mp, 'solutions'):
-            # Fallback to mock results
-            print("WARNING: MediaPipe not available, using mock results")
-            results = generate_mock_results(gender)
-            # Sanitize NaN/Inf values to None (null in JSON)
-            results = sanitize_for_json(results)
-            return jsonify(results), 200
+            # In production, return error instead of mock results
+            print("ERROR: MediaPipe not available")
+            return jsonify({
+                'error': 'Face analysis service is currently unavailable. Please try again later.'
+            }), 503
         
         # Read image bytes
         front_bytes = front_file.read()
@@ -1058,6 +1036,7 @@ def analyze_face():
             print(f"ERROR calculating metrics: {e}")
             import traceback
             traceback.print_exc()
+            # Return error instead of mock results
             return jsonify({
                 'error': f'Failed to calculate metrics: {str(e)}. Please ensure your face is clearly visible and well-lit in both photos.'
             }), 500
