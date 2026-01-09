@@ -1116,6 +1116,8 @@ def health():
         'mediapipe_installed': mp is not None,
         'mediapipe_has_solutions': mp is not None and hasattr(mp, 'solutions'),
         'deepface_available': DEEPFACE_AVAILABLE,
+        'facestats_available': ATTRACTIVENESS_AVAILABLE,
+        'beauty_classifier_available': BEAUTY_CLASSIFIER_AVAILABLE,
         'python_version': str(os.sys.version),
     }
     if mp is not None:
