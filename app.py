@@ -245,8 +245,15 @@ def calculate_canthal_tilt(landmarks, gender='Male'):
         tilt_right = np.degrees(np.arctan2(v_right[1], v_right[0]))
         tilt = (tilt_left + tilt_right) / 2
         
+        # Normalize angle into [-90, 90] range to handle coordinate system issues
+        # This prevents angles like 100° or -120° from causing problems
+        while tilt > 90:
+            tilt -= 180
+        while tilt < -90:
+            tilt += 180
+        
         # Debug logging
-        print(f"[TILT DEBUG] left={tilt_left:.2f}°, right={tilt_right:.2f}°, avg={tilt:.2f}°")
+        print(f"[TILT DEBUG] left={tilt_left:.2f}°, right={tilt_right:.2f}°, avg={tilt:.2f}° (normalized)")
         
         if np.isnan(tilt) or np.isinf(tilt):
             print(f"[TILT DEBUG] Invalid tilt (NaN/Inf), returning 50.0")
@@ -257,14 +264,15 @@ def calculate_canthal_tilt(landmarks, gender='Male'):
         ideal_min, ideal_max = (-10, 20) if gender == 'Male' else (-8, 18)
         score = score_metric(tilt, ideal_min, ideal_max)
         
-        # If tilt is in any remotely human range, clamp to at least 40
-        if -45 < tilt < 45:
+        # Widen the safety clamp to cover most reasonable human face angles
+        # This ensures we never return 0 for normal faces
+        if -80 < tilt < 80:
             score = max(score, 40.0)
             print(f"[TILT DEBUG] Tilt in human range, clamped score to at least 40.0")
         
-        # Final safety clamp
-        final_score = float(np.clip(score, 0.0, 100.0))
-        print(f"[TILT DEBUG] Final score: {final_score:.1f}")
+        # Final safety clamp - ensure minimum score of 30 (never return 0 for any face)
+        final_score = float(np.clip(score, 30.0, 100.0))
+        print(f"[TILT DEBUG] FINAL tilt={tilt:.2f}°, score={score:.1f}, final={final_score:.1f}")
         return final_score
     except Exception as e:
         print(f"ERROR calculating canthal tilt: {e}")
