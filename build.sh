@@ -55,8 +55,38 @@ if [ -d "models" ]; then
     ls -lh models/*.pt 2>/dev/null || echo "No .pt model files found in models/"
 else
     echo "⚠️  WARNING: models/ directory not found"
-    echo "   Model files may need to be downloaded separately"
+    echo "   Creating models directory..."
     mkdir -p models
+fi
+
+# Download beauty-classifier model if not present
+# To use: Upload model to Google Drive, get file ID, replace YOUR_FILE_ID below
+if [ ! -f "models/attractiveness_classifier.pt" ]; then
+    echo "=== Beauty-classifier model not found ==="
+    echo "   Attempting to download from cloud storage..."
+    
+    # Option 1: Google Drive (uncomment and add your file ID)
+    # GOOGLE_DRIVE_FILE_ID="YOUR_FILE_ID_HERE"
+    # if [ -n "$GOOGLE_DRIVE_FILE_ID" ]; then
+    #     echo "Downloading from Google Drive..."
+    #     wget --no-check-certificate "https://drive.google.com/uc?export=download&id=$GOOGLE_DRIVE_FILE_ID" -O models/attractiveness_classifier.pt || echo "Download failed"
+    # fi
+    
+    # Option 2: Dropbox (uncomment and add your link)
+    # DROPBOX_LINK="https://dl.dropboxusercontent.com/s/YOUR_FILE_ID/attractiveness_classifier.pt"
+    # if [ -n "$DROPBOX_LINK" ]; then
+    #     echo "Downloading from Dropbox..."
+    #     wget "$DROPBOX_LINK" -O models/attractiveness_classifier.pt || echo "Download failed"
+    # fi
+    
+    if [ ! -f "models/attractiveness_classifier.pt" ]; then
+        echo "⚠️  Beauty-classifier model not available"
+        echo "   App will work with FaceStats only (still fully functional!)"
+    else
+        echo "✅ Beauty-classifier model downloaded successfully"
+    fi
+else
+    echo "✅ Beauty-classifier model already present"
 fi
 
 echo "=== Build complete ==="
