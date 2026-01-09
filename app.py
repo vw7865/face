@@ -22,6 +22,18 @@ except ImportError:
     DEEPFACE_AVAILABLE = False
     print("WARNING: DeepFace not available. Gender detection will fall back to user input.")
 
+# FaceStats-style attractiveness scoring (CLIP + MLP)
+try:
+    import torch
+    from transformers import CLIPProcessor, CLIPModel
+    import torch.nn as nn
+    import joblib
+    ATTRACTIVENESS_AVAILABLE = True
+    print("FaceStats-style attractiveness scoring available")
+except ImportError:
+    ATTRACTIVENESS_AVAILABLE = False
+    print("WARNING: Attractiveness scoring dependencies not available. Will use geometric metrics only.")
+
 # Try to import MediaPipe with better error handling
 mp = None
 try:
@@ -881,7 +893,21 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male'):
         ) / 6
         
         # Calculate raw PSL without any rescaling or inflation
-        psl = (eyes_avg + midface_avg + lower_third_avg + upper_third_avg + misc_avg) / 5.0
+        # Calculate geometric PSL (based on facial measurements)
+        geometric_psl = (eyes_avg + midface_avg + lower_third_avg + upper_third_avg + misc_avg) / 5.0
+        
+        # Calculate holistic attractiveness score using CLIP + MLP (FaceStats-style)
+        # This provides a more robust, modern attractiveness score
+        attractiveness_score = calculate_attractiveness_score(front_image_array)
+        
+        # Combine geometric PSL with holistic attractiveness
+        # Weight: 60% geometric, 40% holistic attractiveness
+        if attractiveness_score is not None:
+            psl = 0.6 * geometric_psl + 0.4 * attractiveness_score
+            print(f"Combined PSL: {psl:.1f} (geometric: {geometric_psl:.1f}, attractiveness: {attractiveness_score:.1f})")
+        else:
+            psl = geometric_psl
+            print(f"Using geometric PSL only: {psl:.1f}")
         
         # Potential is same as PSL (no artificial boost)
         # In the future, you could add a small fixed offset like psl + 5 if desired
