@@ -1034,8 +1034,21 @@ def calculate_facestats_score(image_array):
         if str(facestats_path) not in sys.path:
             sys.path.insert(0, str(facestats_path))
         
-        # Import FaceStats modules
-        from embeddings.embed_clip import get_clip_embedding
+        # Define CLIP embedding function directly to avoid polars dependency
+        def get_clip_embedding_local(image_path, model_name="openai/clip-vit-base-patch32"):
+            """Extract CLIP embedding for an image (L2-normalized)"""
+            global _CLIP_MODEL, _CLIP_PROCESSOR
+            if '_CLIP_MODEL' not in globals() or _CLIP_MODEL is None:
+                _CLIP_MODEL = CLIPModel.from_pretrained(model_name)
+                _CLIP_PROCESSOR = CLIPProcessor.from_pretrained(model_name)
+                _CLIP_MODEL.eval()
+            
+            img = Image.open(image_path).convert("RGB")
+            inputs = _CLIP_PROCESSOR(images=img, return_tensors="pt")
+            with torch.no_grad():
+                features = _CLIP_MODEL.get_image_features(**inputs)
+            vec = features[0].cpu().numpy()
+            return vec / (np.linalg.norm(vec) + 1e-8)
         
         # Define AttractivenessRegressorV1 directly to avoid polars dependency
         class AttractivenessRegressorV1(torch.nn.Module):
@@ -1051,6 +1064,10 @@ def calculate_facestats_score(image_array):
                 )
             def forward(self, x):
                 return self.net(x)
+        
+        # Initialize CLIP globals
+        _CLIP_MODEL = None
+        _CLIP_PROCESSOR = None
         
         # Convert numpy array to PIL Image
         from PIL import Image
@@ -1071,7 +1088,7 @@ def calculate_facestats_score(image_array):
         
         try:
             # Extract CLIP embedding (512-D, L2-normalized)
-            embedding = get_clip_embedding(tmp_path)
+            embedding = get_clip_embedding_local(tmp_path)
             embedding = np.array(embedding).reshape(1, -1)
             
             # Load attractiveness regressor
