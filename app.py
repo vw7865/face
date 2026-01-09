@@ -32,7 +32,17 @@ try:
     print("FaceStats-style attractiveness scoring available")
 except ImportError:
     ATTRACTIVENESS_AVAILABLE = False
-    print("WARNING: Attractiveness scoring dependencies not available. Will use geometric metrics only.")
+    print("WARNING: FaceStats attractiveness scoring dependencies not available.")
+
+# Beauty-classifier (ResNet-50 on SCUT-FBP5500) for secondary/calibration scoring
+try:
+    import torchvision.models as models
+    import torchvision.transforms as transforms
+    BEAUTY_CLASSIFIER_AVAILABLE = True
+    print("Beauty-classifier (ResNet-50) available for calibration")
+except ImportError:
+    BEAUTY_CLASSIFIER_AVAILABLE = False
+    print("WARNING: Beauty-classifier dependencies not available.")
 
 # Try to import MediaPipe with better error handling
 mp = None
