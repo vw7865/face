@@ -205,5 +205,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
-models/*.pt
-!models/.gitkeep
+# Model files are now tracked via Git LFS
+# models/*.pt
+# !models/.gitkeep
