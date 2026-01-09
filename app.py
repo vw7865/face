@@ -996,26 +996,42 @@ def calculate_attractiveness_score(image_array):
     - FaceStats: https://github.com/jayklarin/FaceStats
     - Beauty-classifier: https://github.com/okurki/beauty-classifier
     """
+    print("\n" + "="*60)
+    print("🎯 ATTRACTIVENESS SCORING - Starting ensemble prediction")
+    print("="*60)
+    
+    load_facestats_models()
+    load_beauty_classifier_models()
+
     scores = []
     
     # Try FaceStats (CLIP + MLP)
+    print("\n📊 Attempting FaceStats scoring...")
     facestats_score = calculate_facestats_score(image_array)
     if facestats_score is not None:
         scores.append(facestats_score)
-        print(f"FaceStats score: {facestats_score:.1f}")
+        print(f"✅ FaceStats contributed: {facestats_score:.1f}")
+    else:
+        print("❌ FaceStats: No score (model not found or error)")
     
     # Try Beauty-classifier (ResNet-50)
+    print("\n📊 Attempting Beauty-classifier scoring...")
     beauty_score = calculate_beauty_classifier_score(image_array)
     if beauty_score is not None:
         scores.append(beauty_score)
-        print(f"Beauty-classifier score: {beauty_score:.1f}")
+        print(f"✅ Beauty-classifier contributed: {beauty_score:.1f}")
+    else:
+        print("❌ Beauty-classifier: No score (model not found or error)")
     
     # Return average if we have at least one score
     if scores:
         avg_score = sum(scores) / len(scores)
-        print(f"Average attractiveness score: {avg_score:.1f} (from {len(scores)} model(s))")
+        print(f"\n🎯 Ensemble Result: {avg_score:.1f} (from {len(scores)} model(s))")
+        print("="*60 + "\n")
         return avg_score
     
+    print("\n⚠️  No ML attractiveness scores available - using geometric only")
+    print("="*60 + "\n")
     return None
 
 def calculate_facestats_score(image_array):
