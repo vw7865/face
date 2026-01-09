@@ -939,57 +939,6 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male'):
         # This will be caught by the error handler in analyze_face()
         raise Exception(f"Failed to calculate metrics: {e}")
 
-def generate_mock_results(gender='Male'):
-    """Generate mock results when MediaPipe fails"""
-    import random
-    return {
-        'overall': {
-            'psl': round(random.uniform(60, 85), 1),
-            'potential': round(random.uniform(65, 90), 1)
-        },
-        'eyes': {
-            'orbitalDepth': round(random.uniform(40, 80), 1),
-            'canthalTilt': round(random.uniform(50, 90), 1),
-            'eyebrowDensity': 75.0,
-            'eyelashDensity': 78.0,
-            'eyelidExposure': round(random.uniform(30, 70), 1),
-            'underEyeHealth': 80.0
-        },
-        'midface': {
-            'cheekbones': round(random.uniform(50, 85), 1),
-            'maxilla': round(random.uniform(40, 80), 1),
-            'nose': round(random.uniform(45, 75), 1),
-            'ipd': round(random.uniform(60, 85), 1),
-            'fwhr': round(random.uniform(55, 80), 1),
-            'compactness': round(random.uniform(50, 75), 1)
-        },
-        'lowerThird': {
-            'lips': round(random.uniform(40, 70), 1),
-            'mandible': round(random.uniform(50, 80), 1),
-            'gonialAngle': round(random.uniform(60, 90), 1),
-            'ramus': round(random.uniform(45, 75), 1),
-            'hyoidSkinTightness': 91.4,
-            'jawWidth': round(random.uniform(50, 80), 1)
-        },
-        'upperThird': {
-            'norwoodStage': 85.0,
-            'foreheadProjection': round(random.uniform(40, 70), 1),
-            'hairlineRecession': 82.0,
-            'hairThinning': 80.0,
-            'hairlineDensity': 83.0,
-            'foreheadSlope': round(random.uniform(50, 80), 1)
-        },
-        'miscellaneous': {
-            'skin': 84.0,
-            'harmony': round(random.uniform(50, 80), 1),
-            'symmetry': round(random.uniform(40, 70), 1),
-            'neckWidth': round(random.uniform(45, 75), 1),
-            'bloat': 78.0,
-            'boneMass': round(random.uniform(50, 80), 1)
-        },
-        'ascensionDate': (datetime.now() + timedelta(days=random.randint(30, 180))).isoformat() + 'Z'
-    }
-
 @app.route('/api/analyze-face', methods=['POST'])
 def analyze_face():
     try:
