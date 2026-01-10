@@ -2,10 +2,16 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install minimal system dependencies
-# MediaPipe should work without OpenGL in headless mode
+# Install system dependencies for OpenCV and MediaPipe
+# OpenCV needs libGL even with headless version in some cases
 RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
