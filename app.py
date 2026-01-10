@@ -486,16 +486,26 @@ def calculate_canthal_tilt(landmarks, gender='Male'):
         v_left = left_inner - left_outer
         v_right = right_inner - right_outer
         
+        # Calculate angles for each eye
         tilt_left = np.degrees(np.arctan2(v_left[1], v_left[0]))
         tilt_right = np.degrees(np.arctan2(v_right[1], v_right[0]))
-        tilt = (tilt_left + tilt_right) / 2
         
-        # Normalize angle into [-90, 90] range to handle coordinate system issues
-        # This prevents angles like 100° or -120° from causing problems
-        while tilt > 90:
-            tilt -= 180
-        while tilt < -90:
-            tilt += 180
+        # Normalize each angle to [-90, 90] range FIRST, then average
+        # This fixes the issue where angles on opposite sides of 180° boundary get averaged incorrectly
+        # Example: left=-8.78°, right=165.80° → should normalize to -8.78° and -14.2° before averaging
+        def normalize_angle(angle):
+            """Normalize angle to [-90, 90] range"""
+            while angle > 90:
+                angle -= 180
+            while angle < -90:
+                angle += 180
+            return angle
+        
+        tilt_left_norm = normalize_angle(tilt_left)
+        tilt_right_norm = normalize_angle(tilt_right)
+        
+        # Now average the normalized angles
+        tilt = (tilt_left_norm + tilt_right_norm) / 2
         
         # Debug logging
         print(f"[TILT DEBUG] left={tilt_left:.2f}° (norm={tilt_left_norm:.2f}°), right={tilt_right:.2f}° (norm={tilt_right_norm:.2f}°), avg={tilt:.2f}° (normalized)")
@@ -1480,6 +1490,8 @@ def calculate_beauty_classifier_score(image_array):
         
         print("🔍 Beauty-classifier: Starting model loading...")
         
+        # IMPORT TORCH FIRST - this was missing!
+        import torch
         import sys
         from pathlib import Path
         import tempfile
