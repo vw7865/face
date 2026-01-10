@@ -505,9 +505,17 @@ def calculate_canthal_tilt(landmarks, gender='Male'):
         ideal_min, ideal_max = (-5, 10) if gender == 'Male' else (-3, 12)
         score = score_metric(tilt, ideal_min, ideal_max)
         
+        # Debug: Log the scoring process
+        print(f"[TILT DEBUG] tilt={tilt:.2f}°, ideal_range=[{ideal_min}, {ideal_max}], raw_score={score:.2f}")
+        
         # No extra custom min clamp - let scores reflect actual geometry
         final_score = float(np.clip(score, 0.0, 100.0))
         print(f"[TILT DEBUG] FINAL tilt={tilt:.2f}°, score={final_score:.1f}")
+        
+        # If score is 0, warn about it
+        if final_score == 0.0:
+            print(f"⚠️ WARNING: Canthal tilt score is 0.0 - tilt value {tilt:.2f}° is far outside ideal range [{ideal_min}, {ideal_max}]")
+        
         return final_score
     except Exception as e:
         print(f"ERROR calculating canthal tilt: {e}")
@@ -670,11 +678,20 @@ def calculate_ipd_score(landmarks):
         
         ipd_ratio = ipd / face_width
         
+        print(f"[IPD_SCORE DEBUG] ipd={ipd:.6f}, face_width={face_width:.6f}, ratio={ipd_ratio:.6f}")
+        
         if np.isnan(ipd_ratio) or np.isinf(ipd_ratio):
+            print(f"[IPD_SCORE DEBUG] Invalid ratio, returning 50.0")
             return 50.0
         
         # Ideal range: 0.45-0.50
-        return score_metric(ipd_ratio, 0.45, 0.50)
+        score = score_metric(ipd_ratio, 0.45, 0.50)
+        print(f"[IPD_SCORE DEBUG] ratio={ipd_ratio:.6f}, ideal=[0.45, 0.50], score={score:.2f}")
+        
+        if score == 0.0:
+            print(f"⚠️ WARNING: IPD score is 0.0 - ratio {ipd_ratio:.6f} is far outside ideal range [0.45, 0.50]")
+        
+        return score
     except:
         return 50.0
 
@@ -778,11 +795,20 @@ def calculate_mandible(landmarks, ipd):
         mandible_length = euclidean_distance(gonion_left, chin)
         mandible_ratio = mandible_length / face_height
         
+        print(f"[MANDIBLE DEBUG] length={mandible_length:.6f}, face_height={face_height:.6f}, ratio={mandible_ratio:.6f}")
+        
         if np.isnan(mandible_ratio) or np.isinf(mandible_ratio):
+            print(f"[MANDIBLE DEBUG] Invalid ratio, returning 50.0")
             return 50.0
         
         # Wider range - mandible ratio typically 0.25-0.50 for normal faces
-        return score_metric(mandible_ratio, 0.30, 0.50)
+        score = score_metric(mandible_ratio, 0.30, 0.50)
+        print(f"[MANDIBLE DEBUG] ratio={mandible_ratio:.6f}, ideal=[0.30, 0.50], score={score:.2f}")
+        
+        if score == 0.0:
+            print(f"⚠️ WARNING: Mandible score is 0.0 - ratio {mandible_ratio:.6f} is far outside ideal range [0.30, 0.50]")
+        
+        return score
     except:
         return 50.0
 
