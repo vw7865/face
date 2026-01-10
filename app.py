@@ -1693,6 +1693,18 @@ def analyze_face():
         if side_landmarks is None:
             return jsonify({'error': 'Face not detected in side image'}), 400
         
+        # Debug: Log landmark detection success
+        print(f"✅ Landmarks detected: front={front_landmarks.shape if front_landmarks is not None else None}, side={side_landmarks.shape if side_landmarks is not None else None}")
+        
+        # Debug: Check IPD calculation
+        try:
+            ipd = calculate_ipd(front_landmarks)
+            print(f"📏 IPD calculated: {ipd:.4f}")
+            if ipd <= 0 or np.isnan(ipd):
+                print(f"⚠️ WARNING: Invalid IPD ({ipd}), this will cause calculation issues")
+        except Exception as e:
+            print(f"⚠️ WARNING: IPD calculation failed: {e}")
+        
         # Convert images to numpy arrays for potential attractiveness scoring
         front_image_array = np.array(front_image)
         
