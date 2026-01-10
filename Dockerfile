@@ -17,9 +17,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application
 COPY app.py .
 
-# Copy model files (if they exist in repo)
-# Note: Large model files may need to be downloaded during build
-COPY models/ ./models/ 2>/dev/null || echo "Models will be downloaded during build"
+# Copy configuration files
+COPY requirements.txt .
+COPY runtime.txt* .
+COPY railway.json* .
+
+# Create models directory (app will handle missing models gracefully)
+RUN mkdir -p ./models
+
+# Copy model files (will fail if models/ doesn't exist - that's OK, app handles it)
+# If models don't exist in repo, they'll be downloaded during build or runtime
+COPY models/ ./models/
 
 # Expose port
 EXPOSE 5000
