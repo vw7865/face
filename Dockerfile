@@ -4,10 +4,10 @@ WORKDIR /app
 
 # Install system dependencies for OpenCV and MediaPipe
 # OpenCV needs libGL even with headless version in some cases
+# Debian 12 uses libgl1 instead of libgl1-mesa-glx
 RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
+    libgl1 \
     libsm6 \
     libxext6 \
     libxrender-dev \
