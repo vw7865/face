@@ -1510,18 +1510,24 @@ def health():
         # This is much faster than loading the full libraries
         import importlib.util
         
-        # Check MediaPipe availability (lightweight check)
+        # Check MediaPipe availability (lightweight - just check if module exists)
         mediapipe_available = False
         mediapipe_has_solutions = False
         mediapipe_version = 'unknown'
         try:
-            mp = get_mediapipe()
-            if mp is not None:
-                mediapipe_available = True
-                mediapipe_has_solutions = hasattr(mp, 'solutions')
-                mediapipe_version = getattr(mp, '__version__', 'unknown')
+            spec = importlib.util.find_spec('mediapipe')
+            mediapipe_available = spec is not None
+            # If module exists, try to get version without importing (check __init__.py)
+            if mediapipe_available:
+                try:
+                    # Try to read version from module metadata without importing
+                    import pkg_resources
+                    version = pkg_resources.get_distribution('mediapipe').version
+                    mediapipe_version = version
+                except Exception:
+                    pass
         except Exception:
-            pass  # MediaPipe not available or failed to load
+            pass  # MediaPipe not available
         
         # Check DeepFace availability (lightweight - just check if module exists)
         deepface_available = False
