@@ -99,6 +99,197 @@ def get_mediapipe():
 app = Flask(__name__)
 CORS(app)
 
+# Model preloading status (loaded in background thread)
+_MODEL_LOADING_STATUS = {
+    'mediapipe': False,
+    'deepface': False,
+    'clip': False,
+    'facestats_regressor': False,
+    'beauty_classifier': False,
+    'loading': False,
+    'error': None
+}
+
+# Global model variables (preloaded)
+_CLIP_MODEL = None
+_CLIP_PROCESSOR = None
+_FACESTATS_REGRESSOR = None
+_BEAUTY_CLASSIFIER_MODEL = None
+
+def preload_models():
+    """Preload all ML models in background to make first request fast"""
+    global _MODEL_LOADING_STATUS, _CLIP_MODEL, _CLIP_PROCESSOR, _FACESTATS_REGRESSOR, _BEAUTY_CLASSIFIER_MODEL
+    
+    if _MODEL_LOADING_STATUS['loading']:
+        return  # Already loading
+    
+    _MODEL_LOADING_STATUS['loading'] = True
+    print("\n" + "="*60)
+    print("🚀 PRELOADING MODELS (background thread)")
+    print("="*60)
+    
+    try:
+        # 1. Preload MediaPipe (fast, ~2-3 seconds)
+        print("\n📦 Preloading MediaPipe...")
+        try:
+            mp = get_mediapipe()
+            if mp is not None:
+                _MODEL_LOADING_STATUS['mediapipe'] = True
+                print("✅ MediaPipe preloaded")
+            else:
+                print("⚠️ MediaPipe not available")
+        except Exception as e:
+            print(f"⚠️ MediaPipe preload failed: {e}")
+        
+        # 2. Preload DeepFace (slow, ~30-60 seconds, but only first time)
+        print("\n📦 Preloading DeepFace (this may take 30-60s on first load)...")
+        try:
+            if check_deepface_available():
+                from deepface import DeepFace
+                # Just import it - models load on first use
+                _MODEL_LOADING_STATUS['deepface'] = True
+                print("✅ DeepFace preloaded")
+            else:
+                print("⚠️ DeepFace not available")
+        except Exception as e:
+            print(f"⚠️ DeepFace preload failed: {e}")
+        
+        # 3. Preload CLIP model (slow, ~20-30 seconds)
+        print("\n📦 Preloading CLIP model (this may take 20-30s)...")
+        try:
+            if check_attractiveness_available():
+                from transformers import CLIPProcessor, CLIPModel
+                import torch
+                _CLIP_MODEL = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+                _CLIP_PROCESSOR = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+                _CLIP_MODEL.eval()
+                _MODEL_LOADING_STATUS['clip'] = True
+                print("✅ CLIP model preloaded")
+            else:
+                print("⚠️ CLIP dependencies not available")
+        except Exception as e:
+            print(f"⚠️ CLIP preload failed: {e}")
+        
+        # 4. Preload FaceStats regressor (fast, ~1-2 seconds)
+        print("\n📦 Preloading FaceStats regressor...")
+        try:
+            if check_attractiveness_available() and _MODEL_LOADING_STATUS['clip']:
+                from pathlib import Path
+                import torch
+                import torch.nn as nn
+                
+                # Define AttractivenessRegressorV1
+                class AttractivenessRegressorV1(nn.Module):
+                    def __init__(self, input_dim=512, hidden1=256, hidden2=64):
+                        super().__init__()
+                        self.net = nn.Sequential(
+                            nn.Linear(input_dim, hidden1),
+                            nn.ReLU(),
+                            nn.Linear(hidden1, hidden2),
+                            nn.ReLU(),
+                            nn.Linear(hidden2, 1),
+                        )
+                    def forward(self, x):
+                        return self.net(x)
+                
+                base_path = Path(__file__).parent
+                model_path = base_path / "models" / "attractiveness_regressor.pt"
+                if not model_path.exists():
+                    model_path = base_path / "facestats" / "models" / "attractiveness_regressor.pt"
+                
+                if model_path.exists():
+                    _FACESTATS_REGRESSOR = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=64)
+                    state_dict = torch.load(model_path, map_location='cpu')
+                    _FACESTATS_REGRESSOR.load_state_dict(state_dict, strict=True)
+                    _FACESTATS_REGRESSOR.eval()
+                    _MODEL_LOADING_STATUS['facestats_regressor'] = True
+                    print("✅ FaceStats regressor preloaded")
+                else:
+                    print("⚠️ FaceStats regressor model file not found")
+            else:
+                print("⚠️ FaceStats regressor: CLIP not available")
+        except Exception as e:
+            print(f"⚠️ FaceStats regressor preload failed: {e}")
+        
+        # 5. Preload Beauty-classifier (fast, ~2-3 seconds)
+        print("\n📦 Preloading Beauty-classifier...")
+        try:
+            if check_beauty_classifier_available():
+                from pathlib import Path
+                import torch
+                import torchvision.models as models
+                import torch.nn as nn
+                
+                # Define BeautyClassifierModel
+                class BeautyClassifierModel(nn.Module):
+                    def __init__(self, out_features=512):
+                        super().__init__()
+                        resnet = models.resnet50(pretrained=False)
+                        self.conv1 = resnet.conv1
+                        self.bn1 = resnet.bn1
+                        self.relu = resnet.relu
+                        self.maxpool = resnet.maxpool
+                        self.layer1 = resnet.layer1
+                        self.layer2 = resnet.layer2
+                        self.layer3 = resnet.layer3
+                        self.layer4 = resnet.layer4
+                        self.avgpool = resnet.avgpool
+                        self.fc = nn.Linear(2048, 1)
+                        self.sigmoid = nn.Sigmoid()
+                    
+                    def forward(self, x):
+                        x = self.conv1(x)
+                        x = self.bn1(x)
+                        x = self.relu(x)
+                        x = self.maxpool(x)
+                        x = self.layer1(x)
+                        x = self.layer2(x)
+                        x = self.layer3(x)
+                        x = self.layer4(x)
+                        x = self.avgpool(x)
+                        x = x.view(x.size(0), -1)
+                        x = self.fc(x)
+                        return self.sigmoid(x)
+                
+                base_path = Path(__file__).parent
+                model_path = base_path / "models" / "attractiveness_classifier.pt"
+                if not model_path.exists():
+                    model_path = base_path / "beauty-classifier" / "models" / "attractiveness_classifier.pt"
+                
+                if model_path.exists():
+                    _BEAUTY_CLASSIFIER_MODEL = BeautyClassifierModel(out_features=512)
+                    state_dict = torch.load(model_path, map_location='cpu')
+                    _BEAUTY_CLASSIFIER_MODEL.load_state_dict(state_dict)
+                    _BEAUTY_CLASSIFIER_MODEL.eval()
+                    _MODEL_LOADING_STATUS['beauty_classifier'] = True
+                    print("✅ Beauty-classifier preloaded")
+                else:
+                    print("⚠️ Beauty-classifier model file not found")
+            else:
+                print("⚠️ Beauty-classifier dependencies not available")
+        except Exception as e:
+            print(f"⚠️ Beauty-classifier preload failed: {e}")
+        
+        print("\n" + "="*60)
+        print("✅ MODEL PRELOADING COMPLETE")
+        print("="*60 + "\n")
+        
+    except Exception as e:
+        _MODEL_LOADING_STATUS['error'] = str(e)
+        print(f"\n❌ Model preloading error: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        _MODEL_LOADING_STATUS['loading'] = False
+
+# Start model preloading in background thread (non-blocking)
+import threading
+def start_model_preloading():
+    """Start model preloading in background thread"""
+    thread = threading.Thread(target=preload_models, daemon=True)
+    thread.start()
+    print("🚀 Started model preloading in background thread")
+
 # Add a simple root route that responds immediately (for Render port detection)
 @app.route('/', methods=['GET'])
 def root():
@@ -1037,8 +1228,7 @@ def calculate_attractiveness_score(image_array):
     print("🎯 ATTRACTIVENESS SCORING - Starting ensemble prediction")
     print("="*60)
     
-    load_facestats_models()
-    load_beauty_classifier_models()
+    # Models are preloaded at startup - no need to load here
 
     scores = []
     
@@ -1094,23 +1284,22 @@ def calculate_facestats_score(image_array):
         # Use module-level globals for CLIP model (lazy loading)
         # Note: _CLIP_MODEL and _CLIP_PROCESSOR are defined at module level above
         def get_clip_embedding_local(image_path, model_name="openai/clip-vit-base-patch32"):
-            """Extract CLIP embedding for an image (L2-normalized)"""
-            # Access module-level globals - they're defined at top of file
-            # We need to reference them from the outer scope
-            clip_model = globals().get('_CLIP_MODEL')
-            clip_processor = globals().get('_CLIP_PROCESSOR')
+            """Extract CLIP embedding for an image (L2-normalized) - uses preloaded model"""
+            global _CLIP_MODEL, _CLIP_PROCESSOR
             
-            if clip_model is None or clip_processor is None:
-                globals()['_CLIP_MODEL'] = CLIPModel.from_pretrained(model_name)
-                globals()['_CLIP_PROCESSOR'] = CLIPProcessor.from_pretrained(model_name)
-                globals()['_CLIP_MODEL'].eval()
-                clip_model = globals()['_CLIP_MODEL']
-                clip_processor = globals()['_CLIP_PROCESSOR']
+            # Use preloaded models if available
+            if _CLIP_MODEL is None or _CLIP_PROCESSOR is None:
+                # Fallback: load on demand (slower, but works if preload failed)
+                print("⚠️ CLIP models not preloaded, loading on demand...")
+                from transformers import CLIPProcessor, CLIPModel
+                _CLIP_MODEL = CLIPModel.from_pretrained(model_name)
+                _CLIP_PROCESSOR = CLIPProcessor.from_pretrained(model_name)
+                _CLIP_MODEL.eval()
             
             img = Image.open(image_path).convert("RGB")
-            inputs = clip_processor(images=img, return_tensors="pt")
+            inputs = _CLIP_PROCESSOR(images=img, return_tensors="pt")
             with torch.no_grad():
-                features = clip_model.get_image_features(**inputs)
+                features = _CLIP_MODEL.get_image_features(**inputs)
             vec = features[0].cpu().numpy()
             return vec / (np.linalg.norm(vec) + 1e-8)
         
@@ -1183,13 +1372,19 @@ def calculate_facestats_score(image_array):
                     print(f"     - {p.resolve()}")
                 return None
             
-            # Load model - use AttractivenessRegressorV1 (matches saved checkpoint)
-            print(f"📦 FaceStats: Loading model from {model_path.name}...")
-            regressor = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=64)
-            state_dict = torch.load(model_path, map_location='cpu')
-            regressor.load_state_dict(state_dict, strict=True)
-            regressor.eval()
-            print("✅ FaceStats: Model loaded successfully")
+            # Use preloaded model if available, otherwise load on demand
+            global _FACESTATS_REGRESSOR
+            if _FACESTATS_REGRESSOR is None:
+                print(f"📦 FaceStats: Loading model from {model_path.name} (not preloaded)...")
+                regressor = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=64)
+                state_dict = torch.load(model_path, map_location='cpu')
+                regressor.load_state_dict(state_dict, strict=True)
+                regressor.eval()
+                _FACESTATS_REGRESSOR = regressor
+                print("✅ FaceStats: Model loaded successfully")
+            else:
+                regressor = _FACESTATS_REGRESSOR
+                print("✅ FaceStats: Using preloaded model")
             
             # Predict attractiveness (raw score)
             print("🔮 FaceStats: Running prediction...")
@@ -1335,13 +1530,19 @@ def calculate_beauty_classifier_score(image_array):
             print("   Note: Model file may need to be pulled using DVC: dvc pull models/attractiveness_classifier.pt.dvc")
             return None
         
-        # Initialize model
-        print(f"📦 Beauty-classifier: Loading model from {model_path.name}...")
-        model = BeautyClassifierModel(out_features=512)
-        state_dict = torch.load(model_path, map_location='cpu')
-        model.load_state_dict(state_dict)
-        model.eval()
-        print("✅ Beauty-classifier: Model loaded successfully")
+        # Use preloaded model if available, otherwise load on demand
+        global _BEAUTY_CLASSIFIER_MODEL
+        if _BEAUTY_CLASSIFIER_MODEL is None:
+            print(f"📦 Beauty-classifier: Loading model from {model_path.name} (not preloaded)...")
+            model = BeautyClassifierModel(out_features=512)
+            state_dict = torch.load(model_path, map_location='cpu')
+            model.load_state_dict(state_dict)
+            model.eval()
+            _BEAUTY_CLASSIFIER_MODEL = model
+            print("✅ Beauty-classifier: Model loaded successfully")
+        else:
+            model = _BEAUTY_CLASSIFIER_MODEL
+            print("✅ Beauty-classifier: Using preloaded model")
         
         # Predict attractiveness (0-1 range, represents 1-5 scale)
         print("🔮 Beauty-classifier: Running prediction...")
@@ -1592,6 +1793,11 @@ def health():
             'error': 'Health check partial failure',
             'message': str(e)
         }), 200
+
+# Start model preloading when app starts (for gunicorn, use @app.before_first_request)
+# For gunicorn, we'll use a different approach - call it at module level
+# This ensures models start loading as soon as the worker starts
+start_model_preloading()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
