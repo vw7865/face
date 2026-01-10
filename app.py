@@ -1816,12 +1816,15 @@ except Exception as e:
     print(f"⚠️ Could not start model preloading thread (non-critical): {e}")
 
 # Confirm module loaded successfully
-print("="*60)
-print("✅ Flask app module loaded successfully")
-print(f"✅ Root endpoint available at: /")
-print(f"✅ Health endpoint available at: /health")
-print(f"✅ API endpoint available at: /api/analyze-face")
-print("="*60)
+import sys
+print("="*60, file=sys.stderr)
+print("✅ Flask app module loaded successfully", file=sys.stderr)
+print(f"✅ Root endpoint available at: /", file=sys.stderr)
+print(f"✅ Health endpoint available at: /health", file=sys.stderr)
+print(f"✅ API endpoint available at: /api/analyze-face", file=sys.stderr)
+print(f"✅ PORT environment variable: {os.environ.get('PORT', 'NOT SET')}", file=sys.stderr)
+print("="*60, file=sys.stderr)
+sys.stderr.flush()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

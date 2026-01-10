@@ -21,6 +21,8 @@ COPY app.py .
 COPY requirements.txt .
 COPY runtime.txt* .
 COPY railway.json* .
+COPY start.sh .
+RUN chmod +x start.sh
 
 # Create models directory (app will handle missing models gracefully)
 RUN mkdir -p ./models
@@ -32,7 +34,6 @@ COPY models/ ./models/
 # Expose port
 EXPOSE 5000
 
-# Run with gunicorn (Railway sets PORT automatically)
-# Use shell form to allow variable expansion
-CMD ["sh", "-c", "gunicorn app:app --bind 0.0.0.0:${PORT:-5000} --timeout 300 --workers 1 --preload"]
+# Run with startup script (better logging and error handling)
+CMD ["./start.sh"]
 
