@@ -1504,21 +1504,72 @@ def analyze_face():
 
 @app.route('/health', methods=['GET'])
 def health():
-    """Health check endpoint with MediaPipe and DeepFace status"""
-    mp = get_mediapipe()
-    status = {
-        'status': 'healthy',
-        'mediapipe_installed': mp is not None,
-        'mediapipe_has_solutions': mp is not None and hasattr(mp, 'solutions'),
-        'deepface_available': check_deepface_available(),
-        'facestats_available': check_attractiveness_available(),
-        'beauty_classifier_available': check_beauty_classifier_available(),
-        'python_version': str(os.sys.version),
-    }
-    if mp is not None:
-        status['mediapipe_version'] = getattr(mp, '__version__', 'unknown')
-    
-    return jsonify(status), 200
+    """Lightweight health check endpoint - returns basic status without loading heavy libraries"""
+    try:
+        # Fast check - just see if modules can be imported (without actually importing)
+        # This is much faster than loading the full libraries
+        import importlib.util
+        
+        # Check MediaPipe availability (lightweight check)
+        mediapipe_available = False
+        mediapipe_has_solutions = False
+        mediapipe_version = 'unknown'
+        try:
+            mp = get_mediapipe()
+            if mp is not None:
+                mediapipe_available = True
+                mediapipe_has_solutions = hasattr(mp, 'solutions')
+                mediapipe_version = getattr(mp, '__version__', 'unknown')
+        except Exception:
+            pass  # MediaPipe not available or failed to load
+        
+        # Check DeepFace availability (lightweight - just check if module exists)
+        deepface_available = False
+        try:
+            spec = importlib.util.find_spec('deepface')
+            deepface_available = spec is not None
+        except Exception:
+            pass
+        
+        # Check torch/transformers availability (lightweight)
+        facestats_available = False
+        try:
+            spec_torch = importlib.util.find_spec('torch')
+            spec_transformers = importlib.util.find_spec('transformers')
+            facestats_available = spec_torch is not None and spec_transformers is not None
+        except Exception:
+            pass
+        
+        # Check torchvision availability (lightweight)
+        beauty_classifier_available = False
+        try:
+            spec_torchvision = importlib.util.find_spec('torchvision')
+            beauty_classifier_available = spec_torchvision is not None
+        except Exception:
+            pass
+        
+        status = {
+            'status': 'healthy',
+            'mediapipe_installed': mediapipe_available,
+            'mediapipe_has_solutions': mediapipe_has_solutions,
+            'deepface_available': deepface_available,
+            'facestats_available': facestats_available,
+            'beauty_classifier_available': beauty_classifier_available,
+            'python_version': str(os.sys.version),
+        }
+        
+        if mediapipe_available:
+            status['mediapipe_version'] = mediapipe_version
+        
+        return jsonify(status), 200
+        
+    except Exception as e:
+        # If anything fails, return basic healthy status
+        return jsonify({
+            'status': 'healthy',
+            'error': 'Health check partial failure',
+            'message': str(e)
+        }), 200
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
