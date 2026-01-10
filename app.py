@@ -424,7 +424,8 @@ def score_metric(value, ideal_min, ideal_max, method='linear'):
     More realistic scoring that provides better separation:
     - 100 at center of ideal range
     - 50 at the edges of ideal range
-    - Goes down toward 0 as you move further away
+    - Goes down gradually as you move further away (but never below 20)
+    - Less harsh: values far outside range still get 20-30 instead of 0
     """
     try:
         if np.isnan(value) or np.isinf(value):
@@ -443,8 +444,10 @@ def score_metric(value, ideal_min, ideal_max, method='linear'):
             # Inside the ideal window → 100 down to 50 (linear)
             return float(100.0 - 50.0 * d)
         else:
-            # Outside the ideal window → 50 down towards 0
-            return float(max(0.0, 50.0 - 20.0 * (d - 1.0)))
+            # Outside the ideal window → 50 down towards 20 (not 0)
+            # More forgiving: even far outside gets at least 20
+            score = 50.0 - 15.0 * (d - 1.0)  # Less harsh: 15 instead of 20
+            return float(max(20.0, score))  # Minimum 20 instead of 0
     except:
         return 50.0
 
@@ -502,7 +505,8 @@ def calculate_canthal_tilt(landmarks, gender='Male'):
             return 50.0
         
         # Use realistic ideal range - positive tilt (upturned) is preferred
-        ideal_min, ideal_max = (-5, 10) if gender == 'Male' else (-3, 12)
+        # Wider ranges to avoid 0.0 scores for normal faces
+        ideal_min, ideal_max = (-10, 15) if gender == 'Male' else (-8, 18)
         score = score_metric(tilt, ideal_min, ideal_max)
         
         # Debug: Log the scoring process
@@ -684,8 +688,8 @@ def calculate_ipd_score(landmarks):
             print(f"[IPD_SCORE DEBUG] Invalid ratio, returning 50.0")
             return 50.0
         
-        # Ideal range: 0.45-0.50
-        score = score_metric(ipd_ratio, 0.45, 0.50)
+        # Ideal range: 0.40-0.55 (wider range for more realistic scoring)
+        score = score_metric(ipd_ratio, 0.40, 0.55)
         print(f"[IPD_SCORE DEBUG] ratio={ipd_ratio:.6f}, ideal=[0.45, 0.50], score={score:.2f}")
         
         if score == 0.0:
@@ -716,7 +720,7 @@ def calculate_fwhr(landmarks):
             return 50.0
         
         # Wider range - fWHR typically 1.5-2.5 for normal faces
-        ideal_min, ideal_max = (1.6, 2.4) if True else (1.5, 2.3)  # Default to male
+        ideal_min, ideal_max = (1.4, 2.6)  # Much wider range to avoid 0.0 scores
         return score_metric(fwhr, ideal_min, ideal_max)
     except:
         return 50.0
@@ -742,7 +746,7 @@ def calculate_compactness(landmarks):
             return 50.0
         
         # Wider range - compactness typically 1.0-1.6 for normal faces
-        return score_metric(compactness, 1.1, 1.5)
+        return score_metric(compactness, 1.0, 1.7)  # Wider range
     except:
         return 50.0
 
@@ -801,8 +805,8 @@ def calculate_mandible(landmarks, ipd):
             print(f"[MANDIBLE DEBUG] Invalid ratio, returning 50.0")
             return 50.0
         
-        # Wider range - mandible ratio typically 0.25-0.50 for normal faces
-        score = score_metric(mandible_ratio, 0.30, 0.50)
+        # Wider range - mandible ratio typically 0.20-0.60 for normal faces
+        score = score_metric(mandible_ratio, 0.25, 0.55)
         print(f"[MANDIBLE DEBUG] ratio={mandible_ratio:.6f}, ideal=[0.30, 0.50], score={score:.2f}")
         
         if score == 0.0:
