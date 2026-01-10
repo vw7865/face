@@ -41,5 +41,6 @@ COPY models/ ./models/
 EXPOSE 5000
 
 # Run with startup script (better logging and error handling)
-CMD ["./start.sh"]
+# Use shell form to ensure proper output redirection
+CMD ["/bin/bash", "-x", "./start.sh"]
 
