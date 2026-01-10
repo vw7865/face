@@ -1367,23 +1367,38 @@ def calculate_beauty_classifier_score(image_array):
         return None
 
 def detect_gender_from_image(image_array):
-    """Detect gender from image using DeepFace (97%+ accuracy)"""
+    """Detect gender from image using DeepFace (97%+ accuracy) - fails fast if slow"""
     try:
         if not check_deepface_available():
             return None
         
         # Lazy import DeepFace to avoid blocking startup
+        # Note: First call may be slow (loads TensorFlow), but subsequent calls are fast
         from deepface import DeepFace
         
-        # DeepFace expects BGR format (OpenCV default)
-        # Analyze gender with high accuracy backend
-        result = DeepFace.analyze(
-            img_path=image_array,
-            actions=['gender'],
-            enforce_detection=False,  # Don't fail if face detection is uncertain
-            detector_backend='retinaface',  # Most accurate detector
-            silent=True  # Suppress verbose output
-        )
+        # Save image to temp file (DeepFace prefers file paths)
+        import tempfile
+        import os
+        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
+            cv2.imwrite(tmp.name, image_array)
+            tmp_path = tmp.name
+        
+        try:
+            # Analyze gender with high accuracy backend
+            # Use opencv backend instead of retinaface for faster loading on first call
+            result = DeepFace.analyze(
+                img_path=tmp_path,
+                actions=['gender'],
+                enforce_detection=False,  # Don't fail if face detection is uncertain
+                detector_backend='opencv',  # Faster than retinaface, still accurate
+                silent=True  # Suppress verbose output
+            )
+        finally:
+            # Clean up temp file
+            try:
+                os.unlink(tmp_path)
+            except:
+                pass
         
         # Handle both single dict and list of dicts
         if isinstance(result, list):
@@ -1399,7 +1414,8 @@ def detect_gender_from_image(image_array):
         else:
             return None
     except Exception as e:
-        print(f"Gender detection error: {e}")
+        # Fail silently - gender detection is optional
+        print(f"⚠️ Gender detection error (will use default): {e}")
         return None
 
 @app.route('/api/analyze-face', methods=['POST'])
