@@ -32,6 +32,6 @@ COPY models/ ./models/
 # Expose port
 EXPOSE 5000
 
-# Run with gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--timeout", "120", "app:app"]
+# Run with gunicorn (use PORT env var, Railway sets this automatically)
+CMD gunicorn app:app --bind 0.0.0.0:${PORT:-5000} --timeout 300 --workers 1 --preload
 
