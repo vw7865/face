@@ -1170,13 +1170,15 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
             attractiveness_score = calculate_attractiveness_score(front_image_array)
         
         # Combine geometric PSL with holistic attractiveness
-        # Weight: 60% geometric, 40% holistic attractiveness
+        # Weight: 50% geometric, 50% ML attractiveness (ML models are more accurate)
         if attractiveness_score is not None:
-            psl = 0.6 * geometric_psl + 0.4 * attractiveness_score
-            print(f"Combined PSL: {psl:.1f} (geometric: {geometric_psl:.1f}, attractiveness: {attractiveness_score:.1f})")
+            psl = 0.5 * geometric_psl + 0.5 * attractiveness_score
+            print(f"\n🎯 FINAL PSL: {psl:.1f} (geometric: {geometric_psl:.1f}, ML attractiveness: {attractiveness_score:.1f})")
+            print(f"   ML models contributing: ✅ (FaceStats + Beauty-classifier ensemble)")
         else:
             psl = geometric_psl
-            print(f"Using geometric PSL only: {psl:.1f}")
+            print(f"\n⚠️  Using geometric PSL only: {psl:.1f} (ML models not available)")
+            print(f"   This is less accurate - check Railway logs for ML model errors")
         
         # Potential is same as PSL (no artificial boost)
         # In the future, you could add a small fixed offset like psl + 5 if desired
@@ -1424,23 +1426,23 @@ def calculate_facestats_score(image_array):
                 raw_score = prediction.item()
             print(f"📊 FaceStats: Raw prediction = {raw_score:.4f}")
             
-            # FaceStats model outputs raw predictions that may need scaling
-            # Based on typical MLP regression, scores might be in various ranges
-            # We'll normalize to 0-100 by assuming scores are roughly centered
-            # If raw scores are negative or very large, we'll scale them
+            # FaceStats model outputs raw predictions that need proper scaling
+            # Based on FaceStats source code, raw scores are converted to deciles (1-10)
+            # We'll use a more robust normalization that handles any range
             
-            # Simple normalization: assume scores are roughly in -50 to 50 range
-            # Scale to 0-100: score_100 = (raw_score + 50) / 100 * 100
-            # But first check if it's already in a reasonable range
-            if raw_score < 0:
-                # Negative scores: map to 0-50
-                score = max(0.0, 50.0 + raw_score)
-            elif raw_score > 100:
-                # Very high scores: cap at 100
-                score = 100.0
-            else:
-                # Assume already in 0-100 range
+            # Strategy: Use sigmoid-like mapping to 0-100
+            # This works well for regression outputs that can be any value
+            # Typical raw scores from FaceStats are roughly in -10 to 10 range based on training
+            
+            # Method 1: If raw score is already reasonable (0-100), use it directly
+            if 0 <= raw_score <= 100:
                 score = raw_score
+            else:
+                # Method 2: Use tanh-based normalization for wider range
+                # tanh maps (-inf, +inf) to (-1, 1), then scale to 0-100
+                # This handles both negative and very large positive values
+                normalized = np.tanh(raw_score / 10.0)  # Divide by 10 to scale input
+                score = 50.0 + (normalized * 50.0)  # Map (-1, 1) to (0, 100)
             
             score = float(np.clip(score, 0.0, 100.0))
             print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f})")
