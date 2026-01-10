@@ -41,6 +41,6 @@ COPY models/ ./models/
 EXPOSE 5000
 
 # Run with startup script (better logging and error handling)
-# Use shell form to ensure proper output redirection
-CMD ["/bin/bash", "-x", "./start.sh"]
+# Railway should use startCommand from railway.json, but this is fallback
+CMD ["./start.sh"]
 
