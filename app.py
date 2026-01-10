@@ -1794,11 +1794,36 @@ def health():
             'message': str(e)
         }), 200
 
-# Start model preloading when app starts (for gunicorn, use @app.before_first_request)
-# For gunicorn, we'll use a different approach - call it at module level
-# This ensures models start loading as soon as the worker starts
-start_model_preloading()
+# Start model preloading when app starts (delayed to ensure app is ready first)
+# Use a small delay to let gunicorn finish initialization
+import time
+def delayed_model_preload():
+    """Start model preloading after a short delay to ensure app is ready"""
+    time.sleep(2)  # Give gunicorn time to finish startup
+    try:
+        start_model_preloading()
+    except Exception as e:
+        print(f"⚠️ Model preloading failed (non-critical): {e}")
+        import traceback
+        traceback.print_exc()
+
+# Start preloading in background (non-blocking, won't crash app if it fails)
+try:
+    preload_thread = threading.Thread(target=delayed_model_preload, daemon=True)
+    preload_thread.start()
+    print("✅ App initialized, model preloading will start in background")
+except Exception as e:
+    print(f"⚠️ Could not start model preloading thread (non-critical): {e}")
+
+# Confirm module loaded successfully
+print("="*60)
+print("✅ Flask app module loaded successfully")
+print(f"✅ Root endpoint available at: /")
+print(f"✅ Health endpoint available at: /health")
+print(f"✅ API endpoint available at: /api/analyze-face")
+print("="*60)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
+    print(f"🚀 Starting Flask development server on port {port}")
     app.run(host='0.0.0.0', port=port, debug=True)
