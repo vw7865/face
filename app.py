@@ -498,7 +498,7 @@ def calculate_canthal_tilt(landmarks, gender='Male'):
             tilt += 180
         
         # Debug logging
-        print(f"[TILT DEBUG] left={tilt_left:.2f}°, right={tilt_right:.2f}°, avg={tilt:.2f}° (normalized)")
+        print(f"[TILT DEBUG] left={tilt_left:.2f}° (norm={tilt_left_norm:.2f}°), right={tilt_right:.2f}° (norm={tilt_right_norm:.2f}°), avg={tilt:.2f}° (normalized)")
         
         if np.isnan(tilt) or np.isinf(tilt):
             print(f"[TILT DEBUG] Invalid tilt (NaN/Inf), returning 50.0")
@@ -1300,6 +1300,9 @@ def calculate_facestats_score(image_array):
             print("⚠️ FaceStats: Dependencies not available (torch/transformers)")
             return None
         
+        # IMPORT TORCH FIRST - this was missing!
+        import torch
+        import torch.nn as nn
         import sys
         from pathlib import Path
         import tempfile
@@ -1336,16 +1339,16 @@ def calculate_facestats_score(image_array):
             return vec / (np.linalg.norm(vec) + 1e-8)
         
         # Define AttractivenessRegressorV1 directly to avoid polars dependency
-        class AttractivenessRegressorV1(torch.nn.Module):
+        class AttractivenessRegressorV1(nn.Module):
             """Matches the stored checkpoint: 512 → 256 → 64 → 1 with ReLU activations."""
             def __init__(self, input_dim=512, hidden1=256, hidden2=64):
                 super().__init__()
-                self.net = torch.nn.Sequential(
-                    torch.nn.Linear(input_dim, hidden1),
-                    torch.nn.ReLU(),
-                    torch.nn.Linear(hidden1, hidden2),
-                    torch.nn.ReLU(),
-                    torch.nn.Linear(hidden2, 1),
+                self.net = nn.Sequential(
+                    nn.Linear(input_dim, hidden1),
+                    nn.ReLU(),
+                    nn.Linear(hidden1, hidden2),
+                    nn.ReLU(),
+                    nn.Linear(hidden2, 1),
                 )
             def forward(self, x):
                 return self.net(x)
