@@ -27,13 +27,18 @@ python -c "import app; print('✅ app module imported successfully')" || {
 }
 
 echo ""
-echo "🚀 Starting gunicorn..."
+echo "🚀 Starting gunicorn on port ${PORT:-5000}..."
+echo "Command: gunicorn app:app --bind 0.0.0.0:${PORT:-5000} --timeout 300 --workers 1 --preload --log-level debug"
+echo ""
+
+# Use exec to replace shell with gunicorn (so Railway sees it as the main process)
 exec gunicorn app:app \
     --bind "0.0.0.0:${PORT:-5000}" \
     --timeout 300 \
     --workers 1 \
     --preload \
-    --log-level info \
+    --log-level debug \
     --access-logfile - \
-    --error-logfile -
+    --error-logfile - \
+    --capture-output
 
