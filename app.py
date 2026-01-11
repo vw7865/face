@@ -1186,7 +1186,7 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
         # Geometric measurements are kept as fallback only
         if attractiveness_score is not None:
             psl = attractiveness_score
-            print(f"\n🎯 FINAL PSL: {psl:.1f} (100% ML models - FaceStats + Beauty-classifier ensemble)")
+            print(f"\n🎯 FINAL PSL: {psl:.1f} (100% FaceStats ML model)")
             print(f"   Geometric PSL (reference only): {geometric_psl:.1f}")
         else:
             # Fallback to geometric if ML models fail (shouldn't happen in production)
