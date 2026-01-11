@@ -199,7 +199,7 @@ def preload_models():
                 
                 if model_path.exists():
                     _FACESTATS_REGRESSOR = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=64)
-                    state_dict = torch.load(model_path, map_location='cpu')
+                    state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
                     _FACESTATS_REGRESSOR.load_state_dict(state_dict, strict=True)
                     _FACESTATS_REGRESSOR.eval()
                     _MODEL_LOADING_STATUS['facestats_regressor'] = True
@@ -258,7 +258,7 @@ def preload_models():
                 
                 if model_path.exists():
                     _BEAUTY_CLASSIFIER_MODEL = BeautyClassifierModel(out_features=512)
-                    state_dict = torch.load(model_path, map_location='cpu')
+                    state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
                     _BEAUTY_CLASSIFIER_MODEL.load_state_dict(state_dict)
                     _BEAUTY_CLASSIFIER_MODEL.eval()
                     _MODEL_LOADING_STATUS['beauty_classifier'] = True
@@ -1422,7 +1422,7 @@ def calculate_facestats_score(image_array):
             if _FACESTATS_REGRESSOR is None:
                 print(f"📦 FaceStats: Loading model from {model_path.name} (not preloaded)...")
                 regressor = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=64)
-                state_dict = torch.load(model_path, map_location='cpu')
+                state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
                 regressor.load_state_dict(state_dict, strict=True)
                 regressor.eval()
                 _FACESTATS_REGRESSOR = regressor
@@ -1582,7 +1582,7 @@ def calculate_beauty_classifier_score(image_array):
         if _BEAUTY_CLASSIFIER_MODEL is None:
             print(f"📦 Beauty-classifier: Loading model from {model_path.name} (not preloaded)...")
             model = BeautyClassifierModel(out_features=512)
-            state_dict = torch.load(model_path, map_location='cpu')
+            state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
             model.load_state_dict(state_dict)
             model.eval()
             _BEAUTY_CLASSIFIER_MODEL = model
