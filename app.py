@@ -179,15 +179,23 @@ def preload_models():
                 import torch.nn as nn
                 
                 # Define AttractivenessRegressorV1
+                # ACTUAL MODEL STRUCTURE (from inspection):
+                # net.0: Linear(512, 256)
+                # net.1: ReLU (implied)
+                # net.2: (unknown layer - Dropout or similar)
+                # net.3: Linear(256, 256) - NOT 256→64!
+                # net.4: ReLU (implied)
+                # net.5: Linear(256, 1) - NOT 64→1!
                 class AttractivenessRegressorV1(nn.Module):
-                    def __init__(self, input_dim=512, hidden1=256, hidden2=64):
+                    def __init__(self, input_dim=512, hidden1=256, hidden2=256):
                         super().__init__()
                         self.net = nn.Sequential(
-                            nn.Linear(input_dim, hidden1),
-                            nn.ReLU(),
-                            nn.Linear(hidden1, hidden2),
-                            nn.ReLU(),
-                            nn.Linear(hidden2, 1),
+                            nn.Linear(input_dim, hidden1),  # net.0: 512 → 256
+                            nn.ReLU(),                      # net.1: ReLU
+                            nn.Dropout(0.0),               # net.2: Placeholder (might be Dropout or identity)
+                            nn.Linear(hidden1, hidden2),   # net.3: 256 → 256 (NOT 256→64!)
+                            nn.ReLU(),                      # net.4: ReLU
+                            nn.Linear(hidden2, 1),         # net.5: 256 → 1 (NOT 64→1!)
                         )
                     def forward(self, x):
                         return self.net(x)
@@ -199,7 +207,7 @@ def preload_models():
                 
                 if model_path.exists():
                     # Load with strict=False for inspection
-                    _FACESTATS_REGRESSOR = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=64)
+                    _FACESTATS_REGRESSOR = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=256)
                     state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
                     
                     # Inspect structure during preload
@@ -208,7 +216,7 @@ def preload_models():
                         shape = state_dict[key].shape if hasattr(state_dict[key], 'shape') else 'N/A'
                         print(f"  {key}: {shape}")
                     
-                    missing_keys, unexpected_keys = _FACESTATS_REGRESSOR.load_state_dict(state_dict, strict=False)
+                    missing_keys, unexpected_keys = _FACESTATS_REGRESSOR.load_state_dict(state_dict, strict=True)
                     if missing_keys:
                         print(f"⚠️ Preload missing keys: {missing_keys}")
                     if unexpected_keys:
@@ -216,7 +224,7 @@ def preload_models():
                     
                     _FACESTATS_REGRESSOR.eval()
                     _MODEL_LOADING_STATUS['facestats_regressor'] = True
-                    print("✅ FaceStats regressor preloaded (strict=False for inspection)")
+                    print("✅ FaceStats regressor preloaded (architecture fixed)")
                 else:
                     print("⚠️ FaceStats regressor model file not found")
             else:
@@ -1366,16 +1374,24 @@ def calculate_facestats_score(image_array):
             return vec / (np.linalg.norm(vec) + 1e-8)
         
         # Define AttractivenessRegressorV1 directly to avoid polars dependency
+        # ACTUAL MODEL STRUCTURE (from inspection):
+        # net.0: Linear(512, 256)
+        # net.1: ReLU
+        # net.2: (unknown - Dropout or similar)
+        # net.3: Linear(256, 256) - NOT 256→64!
+        # net.4: ReLU
+        # net.5: Linear(256, 1) - NOT 64→1!
         class AttractivenessRegressorV1(nn.Module):
-            """Matches the stored checkpoint: 512 → 256 → 64 → 1 with ReLU activations."""
-            def __init__(self, input_dim=512, hidden1=256, hidden2=64):
+            """Actual model: 512 → 256 → 256 → 1 (not 512 → 256 → 64 → 1)"""
+            def __init__(self, input_dim=512, hidden1=256, hidden2=256):
                 super().__init__()
                 self.net = nn.Sequential(
-                    nn.Linear(input_dim, hidden1),
-                    nn.ReLU(),
-                    nn.Linear(hidden1, hidden2),
-                    nn.ReLU(),
-                    nn.Linear(hidden2, 1),
+                    nn.Linear(input_dim, hidden1),  # net.0: 512 → 256
+                    nn.ReLU(),                      # net.1: ReLU
+                    nn.Dropout(0.0),               # net.2: Placeholder (might be Dropout)
+                    nn.Linear(hidden1, hidden2),   # net.3: 256 → 256
+                    nn.ReLU(),                      # net.4: ReLU
+                    nn.Linear(hidden2, 1),         # net.5: 256 → 1
                 )
             def forward(self, x):
                 return self.net(x)
@@ -1454,7 +1470,7 @@ def calculate_facestats_score(image_array):
                 print("="*60 + "\n")
                 
                 # Step 3: Try loading with strict=False first to see what works
-                regressor = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=64)
+                regressor = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=256)
                 missing_keys, unexpected_keys = regressor.load_state_dict(state_dict, strict=False)
                 
                 if missing_keys:
