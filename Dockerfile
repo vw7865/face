@@ -35,7 +35,12 @@ RUN mkdir -p ./models
 
 # Download FaceStats model from GitHub (since Git LFS isn't working on Railway)
 # The model is 774 KB and available directly from the FaceStats repo
-RUN wget -q https://github.com/jayklarin/FaceStats/raw/main/models/attractiveness_regressor.pt -O ./models/attractiveness_regressor.pt || echo "Model download failed - will try to use local copy"
+# Using raw.githubusercontent.com format (correct GitHub raw file URL)
+RUN wget -q https://raw.githubusercontent.com/jayklarin/FaceStats/main/models/attractiveness_regressor.pt -O ./models/attractiveness_regressor.pt && \
+    ls -lh ./models/attractiveness_regressor.pt && \
+    test -f ./models/attractiveness_regressor.pt && \
+    test -s ./models/attractiveness_regressor.pt || \
+    (echo "❌ ERROR: FaceStats model download failed!" && exit 1)
 
 # Download beauty-classifier model (94 MB - too large for GitHub, needs cloud storage)
 # Option 1: Download from Google Drive (uncomment and add your file ID)
