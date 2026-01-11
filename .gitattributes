@@ -1,2 +1,4 @@
+# Exclude attractiveness_regressor.pt from LFS (774 KB is under GitHub's 100 MB limit)
+models/attractiveness_regressor.pt !filter !diff !merge -text
 models/*.pt filter=lfs diff=lfs merge=lfs -text
 models/*.pkl filter=lfs diff=lfs merge=lfs -text
