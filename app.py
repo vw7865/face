@@ -1508,43 +1508,30 @@ def calculate_facestats_score(image_array):
             # - 3.0 (average) → 50  
             # - 4.0 (highest) → 100
             
-            # CRITICAL FIX: Proper normalization to separate attractive vs average faces
-            # Based on user feedback:
-            # - hot.png (attractive): raw 2.4023 → should score HIGH (70-80)
-            # - normal.png (average): raw 2.5969 → should score LOWER (40-50)
+            # SIMPLE, ROBUST NORMALIZATION: Use sigmoid-based mapping for better separation
+            # The model IS working (raw scores differ: 2.40 vs 2.60), but we need proper scaling
             # 
-            # Observation: LOWER raw scores = MORE attractive (2.40 < 2.60, but 2.40 face is more attractive)
-            # So we need INVERTED mapping: lower raw → higher score
+            # Based on observed scores:
+            # - Attractive faces: raw ~2.0-2.4 → should score 70-85
+            # - Average faces: raw ~2.5-2.7 → should score 40-60
+            # - Below-average: raw ~2.8+ → should score 20-40
+            #
+            # Use sigmoid function centered at 2.5 with steepness to create clear separation
+            # This naturally handles outliers and creates better distinction
             
-            # Fixed tight range to maximize separation:
-            # Based on observed: 2.40 (attractive) vs 2.60 (average)
-            # Lower raw = more attractive, so we invert the mapping
-            # 
-            # Range calibration:
-            # - min_raw = 1.8 (very attractive faces, raw ~1.8-2.4)
-            # - max_raw = 2.8 (below-average faces, raw ~2.6-2.8)
-            # This creates clear separation:
-            # - 2.40 (attractive) → ~60 → scale to ~75 (high score)
-            # - 2.60 (average) → ~20 → scale to ~40 (low score)
-            # - 2.20 (very attractive) → ~80 → scale to ~85 (very high)
-            # - 2.80 (below average) → ~0 → scale to ~20 (very low)
+            center = 2.5  # Center point (average attractiveness)
+            steepness = 8.0  # Steepness factor (higher = more separation)
             
-            min_raw = 1.8   # Very attractive threshold (lower raw = more attractive)
-            max_raw = 2.8   # Below-average threshold (higher raw = less attractive)
+            # Sigmoid: 1 / (1 + exp(-steepness * (center - raw)))
+            # This maps: raw < center → higher score, raw > center → lower score
+            sigmoid = 1.0 / (1.0 + np.exp(-steepness * (center - raw_score)))
             
-            # INVERTED linear mapping: (max - raw) / (max - min) * 100
-            # This ensures: lower raw scores → higher final scores
-            clamped_raw = np.clip(raw_score, min_raw, max_raw)
-            base_score = ((max_raw - clamped_raw) / (max_raw - min_raw)) * 100.0
-            
-            # Scale to better range: map 0-100 to 20-90 for more realistic scores
-            # This ensures attractive faces (60-80 base) → 70-85 final
-            # And average faces (20-40 base) → 30-50 final
-            score = 20.0 + (base_score * 0.7)  # Scale: 0→20, 100→90
+            # Map sigmoid (0-1) to 0-100 scale, then shift to 20-90 range for realism
+            score = 20.0 + (sigmoid * 70.0)  # 0→20, 1→90
             score = float(np.clip(score, 0.0, 100.0))
             
-            print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f}, INVERTED mapping from [{min_raw:.2f}, {max_raw:.2f}], scaled)")
-            print(f"   Mapping: lower raw scores = higher attractiveness")
+            print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f}, sigmoid mapping centered at {center})")
+            print(f"   Sigmoid value: {sigmoid:.3f} (higher = more attractive)")
             return score
             
         finally:
