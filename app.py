@@ -198,12 +198,25 @@ def preload_models():
                     model_path = base_path / "facestats" / "models" / "attractiveness_regressor.pt"
                 
                 if model_path.exists():
+                    # Load with strict=False for inspection
                     _FACESTATS_REGRESSOR = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=64)
                     state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
-                    _FACESTATS_REGRESSOR.load_state_dict(state_dict, strict=True)
+                    
+                    # Inspect structure during preload
+                    print("\n🔍 PRELOAD: Inspecting FaceStats model structure:")
+                    for key in sorted(state_dict.keys()):
+                        shape = state_dict[key].shape if hasattr(state_dict[key], 'shape') else 'N/A'
+                        print(f"  {key}: {shape}")
+                    
+                    missing_keys, unexpected_keys = _FACESTATS_REGRESSOR.load_state_dict(state_dict, strict=False)
+                    if missing_keys:
+                        print(f"⚠️ Preload missing keys: {missing_keys}")
+                    if unexpected_keys:
+                        print(f"⚠️ Preload unexpected keys: {unexpected_keys}")
+                    
                     _FACESTATS_REGRESSOR.eval()
                     _MODEL_LOADING_STATUS['facestats_regressor'] = True
-                    print("✅ FaceStats regressor preloaded")
+                    print("✅ FaceStats regressor preloaded (strict=False for inspection)")
                 else:
                     print("⚠️ FaceStats regressor model file not found")
             else:
