@@ -1206,10 +1206,11 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
         # Geometric: Explicit measurements (IPD, canthal tilt, cheekbones, etc.) - precise but limited
         # ML: Holistic attractiveness patterns from CLIP - captures overall appeal but not explicit geometry
         # Together: Best of both worlds - precise geometric features + holistic attractiveness
+        # Weight: 30% geometric + 70% ML (ML models trained on human-rated data are more accurate)
         if attractiveness_score is not None:
-            # 50/50 blend: geometric precision + ML holistic appeal
-            psl = 0.5 * geometric_psl + 0.5 * attractiveness_score
-            print(f"\n🎯 FINAL PSL: {psl:.1f} (50% geometric + 50% ML ensemble)")
+            # 30/70 blend: geometric precision (30%) + ML holistic appeal (70%)
+            psl = 0.3 * geometric_psl + 0.7 * attractiveness_score
+            print(f"\n🎯 FINAL PSL: {psl:.1f} (30% geometric + 70% ML ensemble)")
             print(f"   Geometric PSL: {geometric_psl:.1f} (IPD, canthal tilt, cheekbones, etc.)")
             print(f"   ML PSL (FaceStats): {attractiveness_score:.1f} (holistic attractiveness)")
         else:
