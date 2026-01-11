@@ -1428,12 +1428,30 @@ def calculate_facestats_score(image_array):
             global _FACESTATS_REGRESSOR
             if _FACESTATS_REGRESSOR is None:
                 print(f"📦 FaceStats: Loading model from {model_path.name} (not preloaded)...")
-                regressor = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=64)
+                
+                # Step 1: Load state_dict to inspect actual structure
                 state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
-                regressor.load_state_dict(state_dict, strict=True)
+                
+                # Step 2: Inspect actual model structure
+                print("\n🔍 INSPECTING MODEL STRUCTURE:")
+                print("="*60)
+                for key in sorted(state_dict.keys()):
+                    shape = state_dict[key].shape if hasattr(state_dict[key], 'shape') else 'N/A'
+                    print(f"  {key}: {shape}")
+                print("="*60 + "\n")
+                
+                # Step 3: Try loading with strict=False first to see what works
+                regressor = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=64)
+                missing_keys, unexpected_keys = regressor.load_state_dict(state_dict, strict=False)
+                
+                if missing_keys:
+                    print(f"⚠️ Missing keys (not loaded): {missing_keys}")
+                if unexpected_keys:
+                    print(f"⚠️ Unexpected keys (ignored): {unexpected_keys}")
+                
                 regressor.eval()
                 _FACESTATS_REGRESSOR = regressor
-                print("✅ FaceStats: Model loaded successfully")
+                print("✅ FaceStats: Model loaded (strict=False mode for inspection)")
             else:
                 regressor = _FACESTATS_REGRESSOR
                 print("✅ FaceStats: Using preloaded model")
