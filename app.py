@@ -1404,11 +1404,14 @@ def calculate_facestats_score(image_array):
                 abs_path = path.resolve()
                 exists = path.exists()
                 print(f"   {'✅' if exists else '❌'} {abs_path}")
-                if exists:
-                    model_path = path
-                    size_mb = path.stat().st_size / (1024 * 1024)
-                    print(f"✅ FaceStats: Model found at {abs_path} ({size_mb:.1f} MB)")
-                    break
+            if exists:
+                model_path = path
+                size_bytes = path.stat().st_size
+                size_mb = size_bytes / (1024 * 1024)
+                if size_bytes == 0:
+                    print(f"⚠️ FaceStats: Model file exists but is 0 bytes! This might be a Git LFS issue.")
+                print(f"✅ FaceStats: Model found at {abs_path} ({size_mb:.1f} MB)")
+                break
             
             if model_path is None:
                 print(f"❌ FaceStats: Model not found in any location!")
