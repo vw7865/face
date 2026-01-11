@@ -532,9 +532,9 @@ def calculate_canthal_tilt(landmarks, gender='Male'):
             return 50.0
         
         # Use realistic ideal range - positive tilt (upturned) is preferred
-        # Wider ranges - positive canthal tilt (0-15°) is ideal for attractive faces
-        # Allow slightly negative (-5°) for neutral, but prefer positive
-        ideal_min, ideal_max = (-5, 15) if gender == 'Male' else (-3, 18)
+        # Wider ranges - positive canthal tilt (0-15°) is ideal, but allow wider range
+        # Many attractive faces have slight negative tilt (-10 to 0°) which is still good
+        ideal_min, ideal_max = (-10, 15) if gender == 'Male' else (-8, 18)
         score = score_metric(tilt, ideal_min, ideal_max)
         
         # Debug: Log the scoring process
@@ -748,8 +748,8 @@ def calculate_fwhr(landmarks):
         if np.isnan(fwhr) or np.isinf(fwhr):
             return 50.0
         
-        # Wider range - fWHR typically 1.5-2.5 for normal faces
-        ideal_min, ideal_max = (1.4, 2.6)  # Much wider range to avoid 0.0 scores
+        # Wider range - fWHR typically 1.5-2.5 for normal faces, attractive can be wider
+        ideal_min, ideal_max = (1.2, 2.8)  # Even wider range for attractive faces
         return score_metric(fwhr, ideal_min, ideal_max)
     except:
         return 50.0
@@ -774,8 +774,8 @@ def calculate_compactness(landmarks):
         if np.isnan(compactness) or np.isinf(compactness):
             return 50.0
         
-        # Wider range - compactness typically 1.0-1.6 for normal faces
-        return score_metric(compactness, 1.0, 1.7)  # Wider range
+        # Wider range - compactness typically 1.0-1.6 for normal faces, attractive can vary
+        return score_metric(compactness, 0.9, 1.8)  # Even wider range
     except:
         return 50.0
 
@@ -1206,11 +1206,12 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
         # Geometric: Explicit measurements (IPD, canthal tilt, cheekbones, etc.) - precise but limited
         # ML: Holistic attractiveness patterns from CLIP - captures overall appeal but not explicit geometry
         # Together: Best of both worlds - precise geometric features + holistic attractiveness
-        # Weight: 30% geometric + 70% ML (ML models trained on human-rated data are more accurate)
+        # Weight: 20% geometric + 80% ML (ML models trained on human-rated data are most accurate)
+        # Geometric measurements are still problematic, so give more weight to ML
         if attractiveness_score is not None:
-            # 30/70 blend: geometric precision (30%) + ML holistic appeal (70%)
-            psl = 0.3 * geometric_psl + 0.7 * attractiveness_score
-            print(f"\n🎯 FINAL PSL: {psl:.1f} (30% geometric + 70% ML ensemble)")
+            # 20/80 blend: geometric precision (20%) + ML holistic appeal (80%)
+            psl = 0.2 * geometric_psl + 0.8 * attractiveness_score
+            print(f"\n🎯 FINAL PSL: {psl:.1f} (20% geometric + 80% ML ensemble)")
             print(f"   Geometric PSL: {geometric_psl:.1f} (IPD, canthal tilt, cheekbones, etc.)")
             print(f"   ML PSL (FaceStats): {attractiveness_score:.1f} (holistic attractiveness)")
         else:
