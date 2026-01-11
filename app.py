@@ -532,8 +532,9 @@ def calculate_canthal_tilt(landmarks, gender='Male'):
             return 50.0
         
         # Use realistic ideal range - positive tilt (upturned) is preferred
-        # Wider ranges to avoid 0.0 scores for normal faces
-        ideal_min, ideal_max = (-10, 15) if gender == 'Male' else (-8, 18)
+        # Wider ranges - positive canthal tilt (0-15°) is ideal for attractive faces
+        # Allow slightly negative (-5°) for neutral, but prefer positive
+        ideal_min, ideal_max = (-5, 15) if gender == 'Male' else (-3, 18)
         score = score_metric(tilt, ideal_min, ideal_max)
         
         # Debug: Log the scoring process
@@ -715,9 +716,10 @@ def calculate_ipd_score(landmarks):
             print(f"[IPD_SCORE DEBUG] Invalid ratio, returning 50.0")
             return 50.0
         
-        # Ideal range: 0.40-0.55 (wider range for more realistic scoring)
-        score = score_metric(ipd_ratio, 0.40, 0.55)
-        print(f"[IPD_SCORE DEBUG] ratio={ipd_ratio:.6f}, ideal=[0.45, 0.50], score={score:.2f}")
+        # Ideal range: 0.25-0.50 (adjusted for actual measurements - wider range)
+        # Typical IPD/face_width ratio is 0.30-0.45 for attractive faces
+        score = score_metric(ipd_ratio, 0.25, 0.50)
+        print(f"[IPD_SCORE DEBUG] ratio={ipd_ratio:.6f}, ideal=[0.25, 0.50], score={score:.2f}")
         
         if score == 0.0:
             print(f"⚠️ WARNING: IPD score is 0.0 - ratio {ipd_ratio:.6f} is far outside ideal range [0.45, 0.50]")
@@ -832,9 +834,11 @@ def calculate_mandible(landmarks, ipd):
             print(f"[MANDIBLE DEBUG] Invalid ratio, returning 50.0")
             return 50.0
         
-        # Wider range - mandible ratio typically 0.20-0.60 for normal faces
-        score = score_metric(mandible_ratio, 0.25, 0.55)
-        print(f"[MANDIBLE DEBUG] ratio={mandible_ratio:.6f}, ideal=[0.30, 0.50], score={score:.2f}")
+        # Adjusted range - mandible ratio can be higher for strong jawlines
+        # For attractive faces with strong mandibles, ratio can be 0.50-0.85
+        # Center ideal around 0.60-0.70 for strong jaws
+        score = score_metric(mandible_ratio, 0.40, 0.85)
+        print(f"[MANDIBLE DEBUG] ratio={mandible_ratio:.6f}, ideal=[0.40, 0.85], score={score:.2f}")
         
         if score == 0.0:
             print(f"⚠️ WARNING: Mandible score is 0.0 - ratio {mandible_ratio:.6f} is far outside ideal range [0.30, 0.50]")
