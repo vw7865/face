@@ -181,18 +181,19 @@ def preload_models():
                 # Define AttractivenessRegressorV1
                 # ACTUAL MODEL STRUCTURE (from inspection):
                 # net.0: Linear(512, 256)
-                # net.1: ReLU (implied, not in state_dict)
-                # net.2: (not in state_dict - likely Identity)
+                # net.1: ReLU
+                # net.2: Dropout (no params in eval mode, not in state_dict)
                 # net.3: Linear(256, 256) - NOT 256→64!
-                # net.4: ReLU (implied, not in state_dict)
+                # net.4: ReLU
                 # net.5: Linear(256, 1) - NOT 64→1!
                 class AttractivenessRegressorV1(nn.Module):
                     def __init__(self, input_dim=512, hidden1=256, hidden2=256):
                         super().__init__()
+                        # net.2 is Dropout - has no parameters in eval mode
                         self.net = nn.Sequential(
                             nn.Linear(input_dim, hidden1),  # net.0: 512 → 256
                             nn.ReLU(),                      # net.1: ReLU
-                            nn.Identity(),                  # net.2: Identity (no params)
+                            nn.Dropout(0.0),               # net.2: Dropout (disabled in eval)
                             nn.Linear(hidden1, hidden2),   # net.3: 256 → 256
                             nn.ReLU(),                      # net.4: ReLU
                             nn.Linear(hidden2, 1),         # net.5: 256 → 1
@@ -216,15 +217,10 @@ def preload_models():
                         shape = state_dict[key].shape if hasattr(state_dict[key], 'shape') else 'N/A'
                         print(f"  {key}: {shape}")
                     
-                    missing_keys, unexpected_keys = _FACESTATS_REGRESSOR.load_state_dict(state_dict, strict=True)
-                    if missing_keys:
-                        print(f"⚠️ Preload missing keys: {missing_keys}")
-                    if unexpected_keys:
-                        print(f"⚠️ Preload unexpected keys: {unexpected_keys}")
-                    
-                    _FACESTATS_REGRESSOR.eval()
+                    _FACESTATS_REGRESSOR.eval()  # Set to eval mode (Dropout disabled)
+                    _FACESTATS_REGRESSOR.load_state_dict(state_dict, strict=True)
                     _MODEL_LOADING_STATUS['facestats_regressor'] = True
-                    print("✅ FaceStats regressor preloaded (architecture fixed)")
+                    print("✅ FaceStats regressor preloaded (architecture fixed, strict=True)")
                 else:
                     print("⚠️ FaceStats regressor model file not found")
             else:
@@ -1376,20 +1372,21 @@ def calculate_facestats_score(image_array):
         # Define AttractivenessRegressorV1 directly to avoid polars dependency
         # ACTUAL MODEL STRUCTURE (from inspection):
         # net.0: Linear(512, 256)
-        # net.1: ReLU (implied, not in state_dict)
-        # net.2: (not in state_dict - likely Identity or no-op layer)
+        # net.1: ReLU
+        # net.2: Dropout (no params in eval mode, not in state_dict)
         # net.3: Linear(256, 256) - NOT 256→64!
-        # net.4: ReLU (implied, not in state_dict)
+        # net.4: ReLU
         # net.5: Linear(256, 1) - NOT 64→1!
         class AttractivenessRegressorV1(nn.Module):
-            """Actual model: 512 → 256 → 256 → 1 (not 512 → 256 → 64 → 1)"""
+            """Actual model: 512 → 256 → 256 → 1 (matches saved checkpoint)"""
             def __init__(self, input_dim=512, hidden1=256, hidden2=256):
                 super().__init__()
-                # Use Identity for net.2 since it's not in state_dict (no parameters)
+                # net.2 is Dropout - has no parameters in eval mode, so not in state_dict
+                # But we need it in Sequential for layer indices to match!
                 self.net = nn.Sequential(
                     nn.Linear(input_dim, hidden1),  # net.0: 512 → 256
                     nn.ReLU(),                      # net.1: ReLU
-                    nn.Identity(),                  # net.2: Identity (no params, not in state_dict)
+                    nn.Dropout(0.0),               # net.2: Dropout (disabled in eval, no params)
                     nn.Linear(hidden1, hidden2),   # net.3: 256 → 256
                     nn.ReLU(),                      # net.4: ReLU
                     nn.Linear(hidden2, 1),         # net.5: 256 → 1
@@ -1470,18 +1467,12 @@ def calculate_facestats_score(image_array):
                     print(f"  {key}: {shape}")
                 print("="*60 + "\n")
                 
-                # Step 3: Try loading with strict=False first to see what works
+                # Step 3: Load with strict=True now that architecture matches
                 regressor = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=256)
-                missing_keys, unexpected_keys = regressor.load_state_dict(state_dict, strict=False)
-                
-                if missing_keys:
-                    print(f"⚠️ Missing keys (not loaded): {missing_keys}")
-                if unexpected_keys:
-                    print(f"⚠️ Unexpected keys (ignored): {unexpected_keys}")
-                
-                regressor.eval()
+                regressor.eval()  # Set to eval mode before loading (Dropout disabled)
+                regressor.load_state_dict(state_dict, strict=True)
                 _FACESTATS_REGRESSOR = regressor
-                print("✅ FaceStats: Model loaded (strict=False mode for inspection)")
+                print("✅ FaceStats: Model loaded successfully (strict=True, architecture fixed)")
             else:
                 regressor = _FACESTATS_REGRESSOR
                 print("✅ FaceStats: Using preloaded model")
