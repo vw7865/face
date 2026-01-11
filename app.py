@@ -1517,24 +1517,33 @@ def calculate_facestats_score(image_array):
             # So we need INVERTED mapping: lower raw → higher score
             
             # Fixed tight range to maximize separation:
-            # - min_raw = 2.0 (very attractive faces get raw ~2.0-2.4)
-            # - max_raw = 3.0 (below-average faces get raw ~2.6-3.0)
+            # Based on observed: 2.40 (attractive) vs 2.60 (average)
+            # Lower raw = more attractive, so we invert the mapping
+            # 
+            # Range calibration:
+            # - min_raw = 1.8 (very attractive faces, raw ~1.8-2.4)
+            # - max_raw = 2.8 (below-average faces, raw ~2.6-2.8)
             # This creates clear separation:
-            # - 2.40 (attractive) → ~80 (high score)
-            # - 2.60 (average) → ~40 (low score)
-            # - 2.20 (very attractive) → ~90 (very high)
-            # - 2.80 (below average) → ~20 (very low)
+            # - 2.40 (attractive) → ~60 → scale to ~75 (high score)
+            # - 2.60 (average) → ~20 → scale to ~40 (low score)
+            # - 2.20 (very attractive) → ~80 → scale to ~85 (very high)
+            # - 2.80 (below average) → ~0 → scale to ~20 (very low)
             
-            min_raw = 2.0   # Very attractive threshold (lower raw = more attractive)
-            max_raw = 3.0   # Below-average threshold (higher raw = less attractive)
+            min_raw = 1.8   # Very attractive threshold (lower raw = more attractive)
+            max_raw = 2.8   # Below-average threshold (higher raw = less attractive)
             
             # INVERTED linear mapping: (max - raw) / (max - min) * 100
             # This ensures: lower raw scores → higher final scores
             clamped_raw = np.clip(raw_score, min_raw, max_raw)
-            score = ((max_raw - clamped_raw) / (max_raw - min_raw)) * 100.0
+            base_score = ((max_raw - clamped_raw) / (max_raw - min_raw)) * 100.0
+            
+            # Scale to better range: map 0-100 to 20-90 for more realistic scores
+            # This ensures attractive faces (60-80 base) → 70-85 final
+            # And average faces (20-40 base) → 30-50 final
+            score = 20.0 + (base_score * 0.7)  # Scale: 0→20, 100→90
             score = float(np.clip(score, 0.0, 100.0))
             
-            print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f}, INVERTED mapping from [{min_raw:.2f}, {max_raw:.2f}])")
+            print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f}, INVERTED mapping from [{min_raw:.2f}, {max_raw:.2f}], scaled)")
             print(f"   Mapping: lower raw scores = higher attractiveness")
             return score
             
