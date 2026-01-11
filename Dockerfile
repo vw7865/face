@@ -44,9 +44,9 @@ RUN wget -q https://github.com/jayklarin/FaceStats/raw/main/models/attractivenes
 # RUN wget "https://dl.dropboxusercontent.com/s/YOUR_FILE_ID/attractiveness_classifier.pt" -O ./models/attractiveness_classifier.pt || echo "Beauty-classifier model download failed"
 # Note: For now, beauty-classifier is optional - app works with FaceStats only
 
-# Copy model files (will fail if models/ doesn't exist - that's OK, app handles it)
-# If models don't exist in repo, they'll be downloaded during build or runtime
-COPY models/ ./models/ 2>/dev/null || echo "No local models to copy - using downloaded version"
+# Note: Model files are downloaded from GitHub above (FaceStats model)
+# If you have additional local model files, uncomment the line below:
+# COPY models/ ./models/
 
 # Expose port
 EXPOSE 5000
