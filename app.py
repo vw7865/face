@@ -1494,26 +1494,32 @@ def calculate_facestats_score(image_array):
                 raw_score = prediction.item()
             print(f"📊 FaceStats: Raw prediction = {raw_score:.4f}")
             
-            # FaceStats model outputs raw predictions that need proper scaling
-            # Based on FaceStats source code, raw scores are converted to deciles (1-10)
-            # We'll use a more robust normalization that handles any range
+            # FaceStats model outputs raw regression scores that need proper normalization
+            # Based on FaceStats training data, raw scores are typically in range 2.0-4.0
+            # Training data sample: [3.16, 3.04, 2.77, 2.99, 3.15, 3.35, 3.15, 3.39, 3.16, 3.14]
+            # Mean ≈ 3.1, Range ≈ 2.0-4.0
+            # 
+            # We need to map this to 0-100 scale:
+            # - 2.0 (lowest) → 0
+            # - 3.0 (average) → 50  
+            # - 4.0 (highest) → 100
             
-            # Strategy: Use sigmoid-like mapping to 0-100
-            # This works well for regression outputs that can be any value
-            # Typical raw scores from FaceStats are roughly in -10 to 10 range based on training
+            # Linear mapping based on training distribution
+            # Using range 1.5-4.5 to handle outliers (wider than observed 2.0-4.0)
+            min_raw = 1.5  # Lower bound (below observed minimum)
+            max_raw = 4.5  # Upper bound (above observed maximum)
+            mean_raw = 3.0  # Approximate mean from training data
             
-            # Method 1: If raw score is already reasonable (0-100), use it directly
-            if 0 <= raw_score <= 100:
-                score = raw_score
-            else:
-                # Method 2: Use tanh-based normalization for wider range
-                # tanh maps (-inf, +inf) to (-1, 1), then scale to 0-100
-                # This handles both negative and very large positive values
-                normalized = np.tanh(raw_score / 10.0)  # Divide by 10 to scale input
-                score = 50.0 + (normalized * 50.0)  # Map (-1, 1) to (0, 100)
+            # Clamp raw score to reasonable range
+            clamped_raw = np.clip(raw_score, min_raw, max_raw)
             
+            # Linear mapping: (raw - min) / (max - min) * 100
+            score = ((clamped_raw - min_raw) / (max_raw - min_raw)) * 100.0
+            
+            # Ensure score is in 0-100 range
             score = float(np.clip(score, 0.0, 100.0))
-            print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f})")
+            
+            print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f}, mapped from [{min_raw}, {max_raw}] range)")
             return score
             
         finally:
