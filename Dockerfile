@@ -37,6 +37,13 @@ RUN mkdir -p ./models
 # The model is 774 KB and available directly from the FaceStats repo
 RUN wget -q https://github.com/jayklarin/FaceStats/raw/main/models/attractiveness_regressor.pt -O ./models/attractiveness_regressor.pt || echo "Model download failed - will try to use local copy"
 
+# Download beauty-classifier model (94 MB - too large for GitHub, needs cloud storage)
+# Option 1: Download from Google Drive (uncomment and add your file ID)
+# RUN wget --no-check-certificate "https://drive.google.com/uc?export=download&id=YOUR_FILE_ID" -O ./models/attractiveness_classifier.pt || echo "Beauty-classifier model download failed"
+# Option 2: Download from Dropbox (uncomment and add your link)
+# RUN wget "https://dl.dropboxusercontent.com/s/YOUR_FILE_ID/attractiveness_classifier.pt" -O ./models/attractiveness_classifier.pt || echo "Beauty-classifier model download failed"
+# Note: For now, beauty-classifier is optional - app works with FaceStats only
+
 # Copy model files (will fail if models/ doesn't exist - that's OK, app handles it)
 # If models don't exist in repo, they'll be downloaded during build or runtime
 COPY models/ ./models/ 2>/dev/null || echo "No local models to copy - using downloaded version"
