@@ -1171,23 +1171,27 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
         ) / 6
         
         # Calculate geometric PSL (based on facial measurements)
+        # Note: This is kept for fallback only - ML models are primary
         geometric_psl = (eyes_avg + midface_avg + lower_third_avg + upper_third_avg + misc_avg) / 5.0
         
         # Calculate holistic attractiveness score using multiple models (FaceStats + Beauty-classifier)
         # This provides a more robust, modern attractiveness score with calibration
+        # ML models are trained on human-rated attractiveness data and are more accurate than geometric measurements
         attractiveness_score = None
         if front_image_array is not None:
             attractiveness_score = calculate_attractiveness_score(front_image_array)
         
-        # Combine geometric PSL with holistic attractiveness
-        # Weight: 50% geometric, 50% ML attractiveness (ML models are more accurate)
+        # Use 100% ML models for PSL (most accurate)
+        # ML models are trained on real attractiveness data and capture holistic features
+        # Geometric measurements are kept as fallback only
         if attractiveness_score is not None:
-            psl = 0.5 * geometric_psl + 0.5 * attractiveness_score
-            print(f"\n🎯 FINAL PSL: {psl:.1f} (geometric: {geometric_psl:.1f}, ML attractiveness: {attractiveness_score:.1f})")
-            print(f"   ML models contributing: ✅ (FaceStats + Beauty-classifier ensemble)")
+            psl = attractiveness_score
+            print(f"\n🎯 FINAL PSL: {psl:.1f} (100% ML models - FaceStats + Beauty-classifier ensemble)")
+            print(f"   Geometric PSL (reference only): {geometric_psl:.1f}")
         else:
+            # Fallback to geometric if ML models fail (shouldn't happen in production)
             psl = geometric_psl
-            print(f"\n⚠️  Using geometric PSL only: {psl:.1f} (ML models not available)")
+            print(f"\n⚠️  Using geometric PSL fallback: {psl:.1f} (ML models not available)")
             print(f"   This is less accurate - check Railway logs for ML model errors")
         
         # Potential is same as PSL (no artificial boost)
