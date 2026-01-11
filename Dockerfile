@@ -33,9 +33,13 @@ RUN chmod +x start.sh
 # Create models directory (app will handle missing models gracefully)
 RUN mkdir -p ./models
 
+# Download FaceStats model from GitHub (since Git LFS isn't working on Railway)
+# The model is 774 KB and available directly from the FaceStats repo
+RUN wget -q https://github.com/jayklarin/FaceStats/raw/main/models/attractiveness_regressor.pt -O ./models/attractiveness_regressor.pt || echo "Model download failed - will try to use local copy"
+
 # Copy model files (will fail if models/ doesn't exist - that's OK, app handles it)
 # If models don't exist in repo, they'll be downloaded during build or runtime
-COPY models/ ./models/
+COPY models/ ./models/ 2>/dev/null || echo "No local models to copy - using downloaded version"
 
 # Expose port
 EXPOSE 5000
