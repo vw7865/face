@@ -1202,23 +1202,21 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
         if front_image_array is not None:
             attractiveness_score = calculate_attractiveness_score(front_image_array)
         
-        # Combine geometric + ML models for best accuracy
-        # Geometric: Explicit measurements (IPD, canthal tilt, cheekbones, etc.) - precise but limited
-        # ML: Holistic attractiveness patterns from CLIP - captures overall appeal but not explicit geometry
-        # Together: Best of both worlds - precise geometric features + holistic attractiveness
-        # Weight: 20% geometric + 80% ML (ML models trained on human-rated data are most accurate)
-        # Geometric measurements are still problematic, so give more weight to ML
+        # Use 100% ML models for PSL (most accurate)
+        # ML models (FaceStats) are trained on human-rated attractiveness data and capture holistic appeal
+        # Geometric measurements are kept for detailed breakdowns but don't affect PSL
+        # This ensures attractive faces get proper scores without being dragged down by geometric calibration issues
         if attractiveness_score is not None:
-            # 20/80 blend: geometric precision (20%) + ML holistic appeal (80%)
-            psl = 0.2 * geometric_psl + 0.8 * attractiveness_score
-            print(f"\n🎯 FINAL PSL: {psl:.1f} (20% geometric + 80% ML ensemble)")
-            print(f"   Geometric PSL: {geometric_psl:.1f} (IPD, canthal tilt, cheekbones, etc.)")
-            print(f"   ML PSL (FaceStats): {attractiveness_score:.1f} (holistic attractiveness)")
+            # Pure ML: 100% ML score (most accurate for attractiveness)
+            psl = attractiveness_score
+            print(f"\n🎯 FINAL PSL: {psl:.1f} (100% ML model - FaceStats)")
+            print(f"   ML PSL (FaceStats): {attractiveness_score:.1f} (holistic attractiveness from human-rated data)")
+            print(f"   Geometric PSL (reference only): {geometric_psl:.1f} (shown in breakdown but not used for PSL)")
         else:
-            # Fallback to geometric if ML models fail
+            # Fallback to geometric if ML models fail (shouldn't happen in production)
             psl = geometric_psl
             print(f"\n⚠️  Using geometric PSL fallback: {psl:.1f} (ML models not available)")
-            print(f"   This uses explicit measurements only - check Railway logs for ML model errors")
+            print(f"   This is less accurate - check Railway logs for ML model errors")
         
         # Potential is same as PSL (no artificial boost)
         # In the future, you could add a small fixed offset like psl + 5 if desired
