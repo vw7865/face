@@ -1198,18 +1198,21 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
         if front_image_array is not None:
             attractiveness_score = calculate_attractiveness_score(front_image_array)
         
-        # Use 100% ML models for PSL (most accurate)
-        # ML models are trained on real attractiveness data and capture holistic features
-        # Geometric measurements are kept as fallback only
+        # Combine geometric + ML models for best accuracy
+        # Geometric: Explicit measurements (IPD, canthal tilt, cheekbones, etc.) - precise but limited
+        # ML: Holistic attractiveness patterns from CLIP - captures overall appeal but not explicit geometry
+        # Together: Best of both worlds - precise geometric features + holistic attractiveness
         if attractiveness_score is not None:
-            psl = attractiveness_score
-            print(f"\n🎯 FINAL PSL: {psl:.1f} (100% FaceStats ML model)")
-            print(f"   Geometric PSL (reference only): {geometric_psl:.1f}")
+            # 50/50 blend: geometric precision + ML holistic appeal
+            psl = 0.5 * geometric_psl + 0.5 * attractiveness_score
+            print(f"\n🎯 FINAL PSL: {psl:.1f} (50% geometric + 50% ML ensemble)")
+            print(f"   Geometric PSL: {geometric_psl:.1f} (IPD, canthal tilt, cheekbones, etc.)")
+            print(f"   ML PSL (FaceStats): {attractiveness_score:.1f} (holistic attractiveness)")
         else:
-            # Fallback to geometric if ML models fail (shouldn't happen in production)
+            # Fallback to geometric if ML models fail
             psl = geometric_psl
             print(f"\n⚠️  Using geometric PSL fallback: {psl:.1f} (ML models not available)")
-            print(f"   This is less accurate - check Railway logs for ML model errors")
+            print(f"   This uses explicit measurements only - check Railway logs for ML model errors")
         
         # Potential is same as PSL (no artificial boost)
         # In the future, you could add a small fixed offset like psl + 5 if desired
