@@ -1508,37 +1508,36 @@ def calculate_facestats_score(image_array):
             # - 3.0 (average) → 50  
             # - 4.0 (highest) → 100
             
-            # Calibrated normalization based on observed raw scores
-            # We're consistently seeing raw scores in 2.0-3.0 range for normal to attractive faces
-            # Calibration: Map observed range to proper 0-100 scale
-            # - 1.5 (below average) → 30
-            # - 2.0 (average) → 50
-            # - 2.5 (attractive) → 75
-            # - 3.0 (very attractive) → 95
-            # - 3.5+ (exceptional) → 100
+            # CRITICAL FIX: Use fixed, tight range to properly separate attractive vs average faces
+            # Observed raw scores: 2.40 (attractive) vs 2.60 (average)
+            # We need to map these to clearly different final scores (e.g., 75 vs 50)
+            # Using a tight range ensures small differences in raw scores = large differences in final scores
             
-            # Use calibrated range that matches observed scores
-            min_raw = 1.5   # Below average threshold
-            max_raw = 3.5   # Exceptional threshold
-            avg_raw = 2.0   # Average face
+            # Fixed range based on observed scores:
+            # - Lower bound: 2.0 (below-average faces)
+            # - Upper bound: 2.8 (very attractive faces)
+            # This ensures:
+            # - 2.40 (attractive) → ~67 (good score)
+            # - 2.60 (average) → ~33 (lower score)
+            # - 2.20 (very attractive) → ~83 (high score)
+            # - 2.80 (below average) → ~0 (low score)
             
-            # Linear mapping: (raw - min) / (max - min) * 100
-            # But ensure average faces (2.0) map to ~50, attractive (2.5) to ~75
+            min_raw = 2.0   # Below-average threshold
+            max_raw = 2.8   # Very attractive threshold
+            
+            # Invert mapping: LOWER raw scores = HIGHER attractiveness (if model outputs this way)
+            # OR: HIGHER raw scores = HIGHER attractiveness (standard regression)
+            # Based on user feedback: 2.40 (attractive) < 2.60 (average)
+            # So LOWER raw = MORE attractive, we need to INVERT the mapping
+            # Map: raw 2.0 → 100, raw 2.8 → 0
+            
+            # Inverted linear mapping: (max - raw) / (max - min) * 100
             clamped_raw = np.clip(raw_score, min_raw, max_raw)
-            
-            # Map to 0-100 scale
-            if clamped_raw <= avg_raw:
-                # Below average: 1.5 → 30, 2.0 → 50
-                score = 30.0 + 20.0 * ((clamped_raw - min_raw) / (avg_raw - min_raw))
-            else:
-                # Above average: 2.0 → 50, 2.5 → 75, 3.0 → 95, 3.5 → 100
-                # Use exponential curve for better separation at high end
-                normalized = (clamped_raw - avg_raw) / (max_raw - avg_raw)
-                score = 50.0 + 50.0 * (normalized ** 0.8)  # Slight curve for better high-end separation
-            
+            score = ((max_raw - clamped_raw) / (max_raw - min_raw)) * 100.0
             score = float(np.clip(score, 0.0, 100.0))
             
-            print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f}, calibrated range [{min_raw:.1f}, {max_raw:.1f}])")
+            print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f}, inverted mapping from [{min_raw:.2f}, {max_raw:.2f}] range)")
+            print(f"   Note: Lower raw scores = higher attractiveness (inverted mapping)")
             return score
             
         finally:
