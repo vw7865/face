@@ -181,10 +181,10 @@ def preload_models():
                 # Define AttractivenessRegressorV1
                 # ACTUAL MODEL STRUCTURE (from inspection):
                 # net.0: Linear(512, 256)
-                # net.1: ReLU (implied)
-                # net.2: (unknown layer - Dropout or similar)
+                # net.1: ReLU (implied, not in state_dict)
+                # net.2: (not in state_dict - likely Identity)
                 # net.3: Linear(256, 256) - NOT 256→64!
-                # net.4: ReLU (implied)
+                # net.4: ReLU (implied, not in state_dict)
                 # net.5: Linear(256, 1) - NOT 64→1!
                 class AttractivenessRegressorV1(nn.Module):
                     def __init__(self, input_dim=512, hidden1=256, hidden2=256):
@@ -192,10 +192,10 @@ def preload_models():
                         self.net = nn.Sequential(
                             nn.Linear(input_dim, hidden1),  # net.0: 512 → 256
                             nn.ReLU(),                      # net.1: ReLU
-                            nn.Dropout(0.0),               # net.2: Placeholder (might be Dropout or identity)
-                            nn.Linear(hidden1, hidden2),   # net.3: 256 → 256 (NOT 256→64!)
+                            nn.Identity(),                  # net.2: Identity (no params)
+                            nn.Linear(hidden1, hidden2),   # net.3: 256 → 256
                             nn.ReLU(),                      # net.4: ReLU
-                            nn.Linear(hidden2, 1),         # net.5: 256 → 1 (NOT 64→1!)
+                            nn.Linear(hidden2, 1),         # net.5: 256 → 1
                         )
                     def forward(self, x):
                         return self.net(x)
@@ -1376,19 +1376,20 @@ def calculate_facestats_score(image_array):
         # Define AttractivenessRegressorV1 directly to avoid polars dependency
         # ACTUAL MODEL STRUCTURE (from inspection):
         # net.0: Linear(512, 256)
-        # net.1: ReLU
-        # net.2: (unknown - Dropout or similar)
+        # net.1: ReLU (implied, not in state_dict)
+        # net.2: (not in state_dict - likely Identity or no-op layer)
         # net.3: Linear(256, 256) - NOT 256→64!
-        # net.4: ReLU
+        # net.4: ReLU (implied, not in state_dict)
         # net.5: Linear(256, 1) - NOT 64→1!
         class AttractivenessRegressorV1(nn.Module):
             """Actual model: 512 → 256 → 256 → 1 (not 512 → 256 → 64 → 1)"""
             def __init__(self, input_dim=512, hidden1=256, hidden2=256):
                 super().__init__()
+                # Use Identity for net.2 since it's not in state_dict (no parameters)
                 self.net = nn.Sequential(
                     nn.Linear(input_dim, hidden1),  # net.0: 512 → 256
                     nn.ReLU(),                      # net.1: ReLU
-                    nn.Dropout(0.0),               # net.2: Placeholder (might be Dropout)
+                    nn.Identity(),                  # net.2: Identity (no params, not in state_dict)
                     nn.Linear(hidden1, hidden2),   # net.3: 256 → 256
                     nn.ReLU(),                      # net.4: ReLU
                     nn.Linear(hidden2, 1),         # net.5: 256 → 1
