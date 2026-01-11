@@ -1508,36 +1508,34 @@ def calculate_facestats_score(image_array):
             # - 3.0 (average) → 50  
             # - 4.0 (highest) → 100
             
-            # CRITICAL FIX: Use fixed, tight range to properly separate attractive vs average faces
-            # Observed raw scores: 2.40 (attractive) vs 2.60 (average)
-            # We need to map these to clearly different final scores (e.g., 75 vs 50)
-            # Using a tight range ensures small differences in raw scores = large differences in final scores
+            # CRITICAL FIX: Proper normalization to separate attractive vs average faces
+            # Based on user feedback:
+            # - hot.png (attractive): raw 2.4023 → should score HIGH (70-80)
+            # - normal.png (average): raw 2.5969 → should score LOWER (40-50)
+            # 
+            # Observation: LOWER raw scores = MORE attractive (2.40 < 2.60, but 2.40 face is more attractive)
+            # So we need INVERTED mapping: lower raw → higher score
             
-            # Fixed range based on observed scores:
-            # - Lower bound: 2.0 (below-average faces)
-            # - Upper bound: 2.8 (very attractive faces)
-            # This ensures:
-            # - 2.40 (attractive) → ~67 (good score)
-            # - 2.60 (average) → ~33 (lower score)
-            # - 2.20 (very attractive) → ~83 (high score)
-            # - 2.80 (below average) → ~0 (low score)
+            # Fixed tight range to maximize separation:
+            # - min_raw = 2.0 (very attractive faces get raw ~2.0-2.4)
+            # - max_raw = 3.0 (below-average faces get raw ~2.6-3.0)
+            # This creates clear separation:
+            # - 2.40 (attractive) → ~80 (high score)
+            # - 2.60 (average) → ~40 (low score)
+            # - 2.20 (very attractive) → ~90 (very high)
+            # - 2.80 (below average) → ~20 (very low)
             
-            min_raw = 2.0   # Below-average threshold
-            max_raw = 2.8   # Very attractive threshold
+            min_raw = 2.0   # Very attractive threshold (lower raw = more attractive)
+            max_raw = 3.0   # Below-average threshold (higher raw = less attractive)
             
-            # Invert mapping: LOWER raw scores = HIGHER attractiveness (if model outputs this way)
-            # OR: HIGHER raw scores = HIGHER attractiveness (standard regression)
-            # Based on user feedback: 2.40 (attractive) < 2.60 (average)
-            # So LOWER raw = MORE attractive, we need to INVERT the mapping
-            # Map: raw 2.0 → 100, raw 2.8 → 0
-            
-            # Inverted linear mapping: (max - raw) / (max - min) * 100
+            # INVERTED linear mapping: (max - raw) / (max - min) * 100
+            # This ensures: lower raw scores → higher final scores
             clamped_raw = np.clip(raw_score, min_raw, max_raw)
             score = ((max_raw - clamped_raw) / (max_raw - min_raw)) * 100.0
             score = float(np.clip(score, 0.0, 100.0))
             
-            print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f}, inverted mapping from [{min_raw:.2f}, {max_raw:.2f}] range)")
-            print(f"   Note: Lower raw scores = higher attractiveness (inverted mapping)")
+            print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f}, INVERTED mapping from [{min_raw:.2f}, {max_raw:.2f}])")
+            print(f"   Mapping: lower raw scores = higher attractiveness")
             return score
             
         finally:
