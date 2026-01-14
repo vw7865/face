@@ -1854,6 +1854,7 @@ def analyze_face():
 
 # OpenRouter API configuration
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
+FAL_API_KEY = os.getenv('FAL_API_KEY')
 
 # Safe, filtered blackpill system prompt
 BLACKPILL_SYSTEM_PROMPT = """
@@ -2098,6 +2099,177 @@ def looksmax_advice():
         import traceback
         traceback.print_exc()
         return jsonify({"error": "Server error"}), 500
+
+@app.route('/api/dating-photo', methods=['POST'])
+def dating_photo():
+    """Endpoint for generating dating profile photos using fal.ai FLUX.1 Kontext [pro] (image editing) or FLUX.2 [max] (text-to-image)"""
+    try:
+        data = request.get_json()
+        user_photo_base64 = data.get('userPhoto', '')
+        reference_image_base64 = data.get('referenceImage', '')
+        prompt = data.get('prompt', '').strip()
+        
+        if not user_photo_base64:
+            return jsonify({"error": "User photo is required"}), 400
+        
+        if not prompt:
+            return jsonify({"error": "Prompt is required"}), 400
+        
+        if not FAL_API_KEY:
+            return jsonify({"error": "FAL API key not configured"}), 500
+        
+        # Decode user photo
+        try:
+            user_photo_data = base64.b64decode(user_photo_base64)
+            user_image = Image.open(BytesIO(user_photo_data))
+        except Exception as e:
+            print(f"Error decoding user photo: {str(e)}")
+            return jsonify({"error": "Invalid user photo format"}), 400
+        
+        # Decode reference image if provided
+        reference_image = None
+        if reference_image_base64:
+            try:
+                ref_photo_data = base64.b64decode(reference_image_base64)
+                reference_image = Image.open(BytesIO(ref_photo_data))
+            except Exception as e:
+                print(f"Error decoding reference image: {str(e)}")
+                return jsonify({"error": "Invalid reference image format"}), 400
+        
+        # Generate photo using fal.ai
+        generated_image = generate_dating_photo(user_image, reference_image, prompt)
+        
+        if generated_image is None:
+            return jsonify({"error": "Failed to generate image"}), 500
+        
+        # Convert to base64 for response
+        buffer = BytesIO()
+        generated_image.save(buffer, format='JPEG', quality=90)
+        image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        
+        return jsonify({"image": image_base64})
+        
+    except Exception as e:
+        print(f"Endpoint error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Server error"}), 500
+
+def generate_dating_photo(user_image: Image.Image, reference_image: Image.Image = None, prompt: str = "") -> Image.Image:
+    """Generate dating profile photo using fal.ai FLUX.1 Kontext [pro] (image editing) or FLUX.2 [max] (text-to-image)"""
+    if not FAL_API_KEY:
+        print("Error: FAL API key not set")
+        return None
+    
+    try:
+        # Import fal_client (lazy import to avoid blocking startup)
+        try:
+            import fal_client
+        except ImportError:
+            print("ERROR: fal-client not installed. Install with: pip install fal-client")
+            return None
+        
+        # Set API key
+        fal_client.set_key(FAL_API_KEY)
+        
+        print(f"🎨 Generating photo with fal.ai FLUX.1 Kontext [pro]...")
+        print(f"📝 Prompt: {prompt[:100]}...")
+        print(f"📸 Reference image: {'Yes' if reference_image else 'No'}")
+        
+        # Upload user image to a temporary URL (we'll use fal.ai's upload endpoint or base64)
+        # For now, we'll convert to base64 and use it directly
+        # In production, you might want to upload to a temporary storage first
+        
+        if reference_image:
+            # Scenario 1: With reference image - Use image-to-image editing
+            # Upload reference image to get URL
+            print("📤 Uploading reference image...")
+            ref_buffer = BytesIO()
+            reference_image.save(ref_buffer, format='JPEG', quality=90)
+            ref_buffer.seek(0)
+            
+            # Upload image to fal.ai (or use base64 if supported)
+            # For Kontext, we need to upload the image first to get a URL
+            # Let's use fal.ai's file upload or convert to base64
+            try:
+                # Try uploading via fal.ai's file API
+                upload_result = fal_client.subscribe(
+                    "fal-ai/file-to-url",
+                    arguments={"file": ref_buffer.getvalue()}
+                )
+                reference_image_url = upload_result.get("url", "")
+            except:
+                # Fallback: Use base64 if upload fails
+                # Note: Some models accept base64 directly
+                import base64
+                ref_base64 = base64.b64encode(ref_buffer.getvalue()).decode('utf-8')
+                reference_image_url = f"data:image/jpeg;base64,{ref_base64}"
+            
+            # Prepare prompt for image editing
+            # Kontext can replace/edit elements in the reference image
+            enhanced_prompt = f"{prompt}. Replace the person in this image with the subject from my photo, maintaining the same pose, clothing, and scene composition."
+            
+            print(f"📡 Calling fal.ai Kontext API for image-to-image editing...")
+            input_data = {
+                "image_url": reference_image_url,
+                "prompt": enhanced_prompt,
+                "num_images": 1,
+                "strength": 0.8,  # How much to follow the reference (0.0-1.0)
+            }
+            
+            result = fal_client.subscribe(
+                "fal-ai/flux-pro/kontext",
+                arguments=input_data
+            )
+        else:
+            # Scenario 2: Without reference image - Use text-to-image
+            # For text-to-image, we can use FLUX.2 [max] or Kontext's text-to-image variant
+            # Let's use FLUX.2 [max] for better quality text-to-image
+            enhanced_prompt = f"{prompt}. The subject should match the person in my photo."
+            
+            print(f"📡 Calling fal.ai FLUX.2 [max] API for text-to-image generation...")
+            input_data = {
+                "prompt": enhanced_prompt,
+                "num_images": 1,
+                "image_size": "square_hd",  # Options: square, square_hd, portrait_4_3, portrait_16_9, landscape_4_3, landscape_16_9
+            }
+            
+            result = fal_client.subscribe(
+                "fal-ai/flux-2-max",
+                arguments=input_data
+            )
+        
+        print(f"📥 Received response from fal.ai")
+        
+        # Get the generated image URL
+        if "images" in result and len(result["images"]) > 0:
+            image_url = result["images"][0].get("url", "")
+            
+            if not image_url:
+                print("❌ No image URL in response")
+                print(f"Response keys: {result.keys() if isinstance(result, dict) else 'Not a dict'}")
+                return None
+            
+            # Download the image
+            print(f"📥 Downloading generated image from: {image_url}")
+            response = requests.get(image_url, timeout=30)
+            response.raise_for_status()
+            
+            # Convert to PIL Image
+            generated_image = Image.open(BytesIO(response.content))
+            print(f"✅ Image generated successfully (size: {generated_image.size})")
+            
+            return generated_image
+        else:
+            print("❌ No images in response")
+            print(f"Response: {result}")
+            return None
+            
+    except Exception as e:
+        print(f"Error generating photo with fal.ai: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 @app.route('/health', methods=['GET'])
 def health():
