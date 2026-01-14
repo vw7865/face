@@ -2169,8 +2169,10 @@ def generate_dating_photo(user_image: Image.Image, reference_image: Image.Image 
             print("ERROR: fal-client not installed. Install with: pip install fal-client")
             return None
         
-        # Set API key
-        fal_client.set_key(FAL_API_KEY)
+        # Set API key via environment variable (fal_client uses FAL_KEY env var)
+        # If FAL_KEY is not already set, set it from FAL_API_KEY
+        if not os.getenv('FAL_KEY'):
+            os.environ['FAL_KEY'] = FAL_API_KEY
         
         print(f"🎨 Generating photo with fal.ai FLUX.1 Kontext [pro]...")
         print(f"📝 Prompt: {prompt[:100]}...")
