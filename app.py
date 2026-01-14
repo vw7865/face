@@ -1932,6 +1932,141 @@ def rizz_advice():
         traceback.print_exc()
         return jsonify({"error": "Server error"}), 500
 
+def get_looksmax_advice(psl_data: dict, user_inputs: dict) -> str:
+    """Get blackpill looksmaxxing advice from OpenRouter Venice model"""
+    if not OPENROUTER_API_KEY:
+        return "Error: OpenRouter API key not set in environment variables."
+
+    # Build comprehensive prompt from PSL data and user inputs
+    prompt_parts = []
+    
+    # Add PSL and rating info
+    if psl_data.get('psl'):
+        prompt_parts.append(f"PSL Score: {psl_data['psl']}")
+    if psl_data.get('rating'):
+        prompt_parts.append(f"Rating Category: {psl_data['rating']}")
+    
+    # Add face metrics
+    if psl_data.get('eyes'):
+        eyes = psl_data['eyes']
+        prompt_parts.append(f"Eyes - Canthal Tilt: {eyes.get('canthalTilt', 'N/A')}, Orbital Depth: {eyes.get('orbitalDepth', 'N/A')}, Eyelid Exposure: {eyes.get('eyelidExposure', 'N/A')}")
+    
+    if psl_data.get('midface'):
+        midface = psl_data['midface']
+        prompt_parts.append(f"Midface - IPD: {midface.get('ipd', 'N/A')}, FWHR: {midface.get('fwhr', 'N/A')}, Compactness: {midface.get('compactness', 'N/A')}, Cheekbones: {midface.get('cheekbones', 'N/A')}, Nose: {midface.get('nose', 'N/A')}")
+    
+    if psl_data.get('lowerThird'):
+        lower = psl_data['lowerThird']
+        prompt_parts.append(f"Lower Third - Mandible: {lower.get('mandible', 'N/A')}, Jaw Width: {lower.get('jawWidth', 'N/A')}, Lips: {lower.get('lips', 'N/A')}, Ramus: {lower.get('ramus', 'N/A')}")
+    
+    # Add user inputs
+    user_info = []
+    if user_inputs.get('height'):
+        user_info.append(f"Height: {user_inputs['height']}")
+    if user_inputs.get('race'):
+        user_info.append(f"Race/Ethnicity: {user_inputs['race']}")
+    if user_inputs.get('weight'):
+        user_info.append(f"Weight/Bodyfat: {user_inputs['weight']}")
+    if user_inputs.get('norwood'):
+        user_info.append(f"Norwood Scale: {user_inputs['norwood']}")
+    if user_inputs.get('hairDensity'):
+        user_info.append(f"Hair Density: {user_inputs['hairDensity']}")
+    if user_inputs.get('gymStatus'):
+        user_info.append(f"Gym Status: {user_inputs['gymStatus']}")
+    if user_inputs.get('skinCondition'):
+        user_info.append(f"Skin Condition: {user_inputs['skinCondition']}")
+    if user_inputs.get('frame'):
+        user_info.append(f"Frame: {user_inputs['frame']}")
+    if user_inputs.get('bodyType'):
+        user_info.append(f"Body Type: {user_inputs['bodyType']}")
+    if user_inputs.get('voice'):
+        user_info.append(f"Voice: {user_inputs['voice']}")
+    if user_inputs.get('socialStatus'):
+        user_info.append(f"Social Status/Inhib: {user_inputs['socialStatus']}")
+    
+    # Combine all info
+    user_context = "\n".join(user_info)
+    face_metrics = "\n".join(prompt_parts)
+    
+    user_prompt = f"""Analyze this person's looksmaxxing potential and provide brutal blackpill advice:
+
+FACE ANALYSIS:
+{face_metrics}
+
+USER DETAILS:
+{user_context}
+
+Provide comprehensive looksmaxxing advice including:
+- Honest PSL/SMV assessment based on all factors
+- Specific hardmaxx recommendations (surgeries, procedures)
+- Softmaxx improvements (gym, diet, skincare, style)
+- Realistic ascension potential (can they ascend? How many PSL points?)
+- Priority order of improvements (what to fix first)
+- Cost estimates for hardmaxx procedures
+- Timeline for improvements
+- Whether it's over or if there's hope
+
+Be brutally honest, use blackpill terminology, and provide actionable advice."""
+
+    try:
+        response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://looksmax-backend-production.up.railway.app",
+                "X-Title": "Looksmaxxing Advisor"
+            },
+            json={
+                "model": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+                "messages": [
+                    {"role": "system", "content": BLACKPILL_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 1000
+            },
+            timeout=30
+        )
+
+        response.raise_for_status()
+        raw_advice = response.json()["choices"][0]["message"]["content"].strip()
+
+        # Post-filter: Replace any remaining dangerous phrases
+        dangerous = ["rope", "kill yourself", "suicide", "end your life", "self-harm"]
+        for word in dangerous:
+            raw_advice = raw_advice.replace(word, "[filtered - no harm advice]")
+
+        return raw_advice
+
+    except requests.exceptions.HTTPError as e:
+        error_text = e.response.text if e.response else str(e)
+        print(f"OpenRouter HTTP error: {error_text}")
+        return f"API error: {error_text}"
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
+        return f"Error contacting advisor: {str(e)}"
+
+@app.route('/api/looksmax-advice', methods=['POST'])
+def looksmax_advice():
+    """Endpoint for getting blackpill looksmaxxing advice"""
+    try:
+        data = request.get_json()
+        psl_data = data.get('pslData', {})
+        user_inputs = data.get('userInputs', {})
+
+        if not psl_data and not user_inputs:
+            return jsonify({"error": "No data provided"}), 400
+
+        advice = get_looksmax_advice(psl_data, user_inputs)
+        return jsonify({"advice": advice})
+
+    except Exception as e:
+        print(f"Endpoint error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Server error"}), 500
+
 @app.route('/health', methods=['GET'])
 def health():
     """Lightweight health check endpoint - returns basic status without loading heavy libraries"""
