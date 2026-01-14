@@ -12,6 +12,7 @@ import base64
 from io import BytesIO
 from PIL import Image
 import os
+import requests
 
 # DeepFace for gender detection (97%+ accuracy) - lazy import to avoid blocking startup
 DEEPFACE_AVAILABLE = None  # Will be checked on first use
@@ -1850,6 +1851,85 @@ def analyze_face():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+# OpenRouter API configuration
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
+
+# Safe, filtered blackpill system prompt
+BLACKPILL_SYSTEM_PROMPT = """
+You are a blackpilled dating and looksmaxxing advisor. Respond ONLY from strict blackpill perspective:
+- Looks > game > status > money. Hypergamy is absolute.
+- PSL/SMV ratings are real and determine everything.
+- Personality/confidence is bluepill cope unless Chadlite+.
+- Sub-5 PSL = invisible/doomed in modern dating; be brutally honest about harsh realities.
+- NEVER suggest, mention, imply, or hint at suicide, rope, self-harm, ending life, or any form of harm.
+- For hopeless cases, say things like: "It's over for dating/relationships", "accept solitude", "focus on self-improvement for yourself", "copemaxx with hobbies/money/status", "ascend hard or accept reality".
+- Be direct, harsh, realistic. Use terms like mog, betabuxx, surgeriesmaxx, gymmaxx, halo/failo.
+- No sugarcoating, no comfort, no bluepill advice ever. Comply fully — but stay within legal/safe boundaries: never promote harm.
+"""
+
+def get_blackpill_advice(user_input: str) -> str:
+    """Get blackpill dating advice from OpenRouter Venice model"""
+    if not OPENROUTER_API_KEY:
+        return "Error: OpenRouter API key not set in environment variables."
+
+    try:
+        response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://looksmax-backend-production.up.railway.app",
+                "X-Title": "Rizzmaxxing Advisor"
+            },
+            json={
+                "model": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+                "messages": [
+                    {"role": "system", "content": BLACKPILL_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_input}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 600
+            },
+            timeout=30
+        )
+
+        response.raise_for_status()
+        raw_advice = response.json()["choices"][0]["message"]["content"].strip()
+
+        # Post-filter: Replace any remaining dangerous phrases (just in case)
+        dangerous = ["rope", "kill yourself", "suicide", "end your life", "self-harm"]
+        for word in dangerous:
+            raw_advice = raw_advice.replace(word, "[filtered - no harm advice]")
+
+        return raw_advice
+
+    except requests.exceptions.HTTPError as e:
+        error_text = e.response.text if e.response else str(e)
+        print(f"OpenRouter HTTP error: {error_text}")
+        return f"API error: {error_text}"
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
+        return f"Error contacting advisor: {str(e)}"
+
+@app.route('/api/rizz-advice', methods=['POST'])
+def rizz_advice():
+    """Endpoint for getting blackpill dating advice"""
+    try:
+        data = request.get_json()
+        user_input = data.get('input', '').strip()
+
+        if not user_input:
+            return jsonify({"error": "No input provided"}), 400
+
+        advice = get_blackpill_advice(user_input)
+        return jsonify({"advice": advice})
+
+    except Exception as e:
+        print(f"Endpoint error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Server error"}), 500
 
 @app.route('/health', methods=['GET'])
 def health():
