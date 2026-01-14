@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: looksmax-backend
+    env: python
+    buildCommand: ./build.sh
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 300 --workers 1 --preload
+    healthCheckPath: /
+    # Enable build cache for faster deployments
+    buildFilter:
+      paths:
+        - requirements.txt
+        - build.sh
+        - app.py
+        - models/**
+
+
