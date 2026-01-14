@@ -176,8 +176,11 @@ class FaceAnalysisService {
                 }
                 let results = try decoder.decode(FaceAnalysisResults.self, from: data)
                 print("✅ Successfully decoded results! PSL: \(results.overall.psl ?? 0)")
+                print("📱 About to call completion handler on main thread...")
                 DispatchQueue.main.async {
+                    print("📱 Calling completion handler with success result")
                     completion(.success(results))
+                    print("📱 Completion handler called successfully")
                 }
             } catch let decodingError as DecodingError {
                 // Better error reporting

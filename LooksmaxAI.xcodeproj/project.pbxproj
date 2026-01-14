@@ -29,9 +29,22 @@
 		842E2C4E2F0F1BE00009E999 /* LooksmaxAIUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LooksmaxAIUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		842E2C632F0F20EB0009E999 /* Exceptions for "LooksmaxAI" folder in "LooksmaxAI" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 842E2C362F0F1BDD0009E999 /* LooksmaxAI */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		842E2C392F0F1BDD0009E999 /* LooksmaxAI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				842E2C632F0F20EB0009E999 /* Exceptions for "LooksmaxAI" folder in "LooksmaxAI" target */,
+			);
 			path = LooksmaxAI;
 			sourceTree = "<group>";
 		};
@@ -400,6 +413,7 @@
 				DEVELOPMENT_TEAM = 254YL47BHK;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				"INFOPLIST_FILE[sdk=*]" = "$(SRCROOT)/LooksmaxAI/Info.plist";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -428,6 +442,7 @@
 				DEVELOPMENT_TEAM = 254YL47BHK;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				"INFOPLIST_FILE[sdk=*]" = "$(SRCROOT)/LooksmaxAI/Info.plist";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
