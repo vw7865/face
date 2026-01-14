@@ -1907,10 +1907,26 @@ def get_blackpill_advice(user_input: str) -> str:
 
     except requests.exceptions.HTTPError as e:
         error_text = e.response.text if e.response else str(e)
-        print(f"OpenRouter HTTP error: {error_text}")
+        status_code = e.response.status_code if e.response else None
+        
+        print(f"OpenRouter HTTP error ({status_code}): {error_text}")
+        
+        # Handle rate limiting (429)
+        if status_code == 429:
+            return "Rate limit exceeded. The free AI model has usage limits. Please wait a few minutes and try again, or consider upgrading to a paid OpenRouter plan for higher limits."
+        
+        # Handle other HTTP errors
+        if status_code:
+            return f"API error (Status {status_code}): Please try again in a moment."
+        
         return f"API error: {error_text}"
+    except requests.exceptions.Timeout:
+        print("OpenRouter request timed out")
+        return "Request timed out. The AI service is taking too long to respond. Please try again."
     except Exception as e:
         print(f"Unexpected error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return f"Error contacting advisor: {str(e)}"
 
 @app.route('/api/rizz-advice', methods=['POST'])
