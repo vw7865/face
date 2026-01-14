@@ -25,33 +25,33 @@ COPY requirements.txt .
 # Install Python dependencies in stages to optimize caching
 # Install lighter dependencies first
 RUN pip install --no-cache-dir \
-    setuptools>=65.0.0 \
+    "setuptools>=65.0.0" \
     wheel \
-    Flask==3.0.0 \
-    flask-cors==4.0.0 \
-    numpy>=1.24.0,<2.0.0 \
-    Pillow>=10.0.0 \
-    gunicorn==21.2.0 \
-    requests>=2.31.0 \
-    fal-client>=0.4.0
+    "Flask==3.0.0" \
+    "flask-cors==4.0.0" \
+    "numpy>=1.24.0,<2.0.0" \
+    "Pillow>=10.0.0" \
+    "gunicorn==21.2.0" \
+    "requests>=2.31.0" \
+    "fal-client>=0.4.0"
 
 # Install heavy ML dependencies
 RUN pip install --no-cache-dir \
-    opencv-python-headless>=4.8.0 \
-    mediapipe==0.10.21 \
-    scikit-learn>=1.3.0 \
-    polars>=0.19.0
+    "opencv-python-headless>=4.8.0" \
+    "mediapipe==0.10.21" \
+    "scikit-learn>=1.3.0" \
+    "polars>=0.19.0"
 
 # Install PyTorch (CPU-only, smaller and faster)
 RUN pip install --no-cache-dir \
-    torch>=2.0.0 \
-    torchvision>=0.15.0 \
+    "torch>=2.0.0" \
+    "torchvision>=0.15.0" \
     --index-url https://download.pytorch.org/whl/cpu
 
 # Install transformers and deepface last (they depend on torch)
 RUN pip install --no-cache-dir \
-    transformers>=4.30.0 \
-    deepface>=0.0.79
+    "transformers>=4.30.0" \
+    "deepface>=0.0.79"
 
 # Copy application and configuration files
 COPY app.py .
