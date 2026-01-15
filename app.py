@@ -2255,13 +2255,22 @@ def generate_dating_photo(user_image: Image.Image, reference_image: Image.Image 
             user_image.save(user_buffer, format='JPEG', quality=90)
             user_buffer.seek(0)
             
-            # Upload user image to fal.ai to get URL
-            # fal.ai file-to-url expects a file object or URL, not raw bytes
-            # We'll use base64 data URI directly which is supported by Kontext
-            import base64
-            user_base64 = base64.b64encode(user_buffer.getvalue()).decode('utf-8')
-            user_image_url = f"data:image/jpeg;base64,{user_base64}"
-            print(f"✅ User photo encoded as base64 data URI (size: {len(user_base64)} chars)")
+            # Upload user image using fal.storage.upload (proper method per fal.ai docs)
+            try:
+                user_upload_result = fal_client.storage.upload(
+                    user_buffer.getvalue(),
+                    content_type="image/jpeg"
+                )
+                user_image_url = user_upload_result.get("url", "")
+                print(f"✅ User photo uploaded via storage.upload: {user_image_url[:50]}...")
+            except Exception as e:
+                print(f"⚠️ Error uploading via storage.upload: {str(e)}")
+                print(f"📝 Falling back to base64 data URI...")
+                # Fallback to base64 if upload fails
+                import base64
+                user_base64 = base64.b64encode(user_buffer.getvalue()).decode('utf-8')
+                user_image_url = f"data:image/jpeg;base64,{user_base64}"
+                print(f"✅ User photo encoded as base64 data URI (size: {len(user_base64)} chars)")
             
             # Use Kontext to edit the user's photo based on the prompt
             # IMPORTANT: Kontext only sees ONE image (image_url), so the prompt should describe
