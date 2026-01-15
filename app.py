@@ -2183,10 +2183,9 @@ def generate_dating_photo(user_image: Image.Image, reference_image: Image.Image 
         # In production, you might want to upload to a temporary storage first
         
         if reference_image:
-            # Scenario 1: With reference image - Person replacement
-            # IMPORTANT: Kontext doesn't support passing two images directly
-            # We need to use a different approach: Use the user's photo as base and edit it to match the reference scene
-            # OR use IP-Adapter style if supported
+            # Scenario 1: With reference image - Use flux-2-max/edit for person replacement
+            # flux-2-max/edit supports multiple images via image_urls array
+            # We'll pass reference image as base and user photo, then use prompt to replace person
             
             print("📤 Uploading user photo...")
             user_buffer = BytesIO()
@@ -2200,61 +2199,49 @@ def generate_dating_photo(user_image: Image.Image, reference_image: Image.Image 
             
             # Upload both images to fal.ai to get URLs
             try:
-                # Upload user photo
-                user_upload_result = fal_client.subscribe(
-                    "fal-ai/file-to-url",
-                    arguments={"file": user_buffer.getvalue()}
-                )
-                user_image_url = user_upload_result.get("url", "")
-                print(f"✅ User photo uploaded: {user_image_url[:50]}...")
-                
-                # Upload reference image
+                # Upload reference image (will be the base image)
                 ref_upload_result = fal_client.subscribe(
                     "fal-ai/file-to-url",
                     arguments={"file": ref_buffer.getvalue()}
                 )
                 reference_image_url = ref_upload_result.get("url", "")
                 print(f"✅ Reference image uploaded: {reference_image_url[:50]}...")
+                
+                # Upload user photo (will be used for person replacement)
+                user_upload_result = fal_client.subscribe(
+                    "fal-ai/file-to-url",
+                    arguments={"file": user_buffer.getvalue()}
+                )
+                user_image_url = user_upload_result.get("url", "")
+                print(f"✅ User photo uploaded: {user_image_url[:50]}...")
             except Exception as e:
                 print(f"Error uploading images: {str(e)}")
                 # Fallback: Use base64 if upload fails
                 import base64
-                user_base64 = base64.b64encode(user_buffer.getvalue()).decode('utf-8')
-                user_image_url = f"data:image/jpeg;base64,{user_base64}"
                 ref_base64 = base64.b64encode(ref_buffer.getvalue()).decode('utf-8')
                 reference_image_url = f"data:image/jpeg;base64,{ref_base64}"
+                user_base64 = base64.b64encode(user_buffer.getvalue()).decode('utf-8')
+                user_image_url = f"data:image/jpeg;base64,{user_base64}"
             
-            # IMPORTANT: Kontext API limitation
-            # Kontext only accepts ONE image (image_url) and a text prompt
-            # It CANNOT see both the user's photo AND the reference image simultaneously
-            # Therefore, true person replacement is not possible with Kontext alone
+            # Use flux-2-max/edit with both images
+            # Reference image is @Image1 (base), user photo is @Image2
+            # The prompt will instruct to replace person in @Image1 with person from @Image2
+            enhanced_prompt = f"{prompt}. Replace the entire person in @Image1 with the full body and face from @Image2. Keep the exact pose, clothing, background, lighting, and environment from @Image1. Photorealistic, natural, high detail, no artifacts."
             
-            # Best approach: Use reference image as base and try to replace person via prompt
-            # However, since Kontext can't see the user's photo, it will generate a new person
-            # that matches the prompt description, not the actual user
+            print(f"📡 Calling fal.ai FLUX.2 [max] /edit API for person replacement...")
+            print(f"📝 Using reference image as base, replacing person with your photo")
             
-            # Alternative: Use user photo as base and match reference scene (preserves user's face)
-            # This is what we'll do - it's the best we can achieve with Kontext's limitations
-            
-            enhanced_prompt = f"{prompt}. Transform this image to match the scene, background, pose, clothing style, and overall composition from the reference image. Keep the person's face, body features, and physical appearance exactly the same as in this image, but change the background, scene setting, pose, clothing, and lighting to match the reference image's style and aesthetic."
-            
-            print(f"📡 Calling fal.ai Kontext API...")
-            print(f"📝 Strategy: Using YOUR photo as base, transforming scene/pose/background to match reference")
-            print(f"⚠️  Note: Kontext can only edit one image, so we use your photo and match the reference scene")
-            print(f"✅ This preserves YOUR appearance while adapting to the reference scene")
-            
-            # Use user's photo as base (this preserves their actual face/body)
-            # Edit it to match the reference scene/pose/background/clothing
+            # flux-2-max/edit accepts image_urls as an array
+            # First image is the reference (base), second is the user's photo
             input_data = {
-                "image_url": user_image_url,  # User photo as base - preserves their actual appearance
+                "image_urls": [reference_image_url, user_image_url],  # Reference first, then user photo
                 "prompt": enhanced_prompt,
-                "num_images": 1,
-                "guidance_scale": 7.5,  # Higher guidance for better prompt following
-                "num_inference_steps": 28,  # More steps for better quality
+                "image_size": "auto",  # Let model determine size based on input
+                "output_format": "jpeg",
             }
             
             result = fal_client.subscribe(
-                "fal-ai/flux-pro/kontext",
+                "fal-ai/flux-2-max/edit",
                 arguments=input_data
             )
         else:
