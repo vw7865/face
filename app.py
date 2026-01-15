@@ -2246,11 +2246,25 @@ def generate_dating_photo(user_image: Image.Image, reference_image: Image.Image 
             print(f"✅ User photo encoded as base64 data URI (size: {len(user_base64)} chars)")
             
             # Use Kontext to edit the user's photo based on the prompt
-            # This way, the user's actual appearance is preserved while the scene changes
-            enhanced_prompt = f"{prompt}. Keep the person's face, body features, and physical appearance exactly the same as in this image, but transform the scene, background, pose, clothing, and setting to match the prompt."
+            # IMPORTANT: Kontext only sees ONE image (image_url), so the prompt should describe
+            # what to CHANGE in that image, not reference "uploaded photo" or "my photo"
+            
+            # Clean up the prompt - remove confusing references since Kontext only sees one image
+            clean_prompt = prompt
+            # Remove references that don't make sense when Kontext only sees one image
+            clean_prompt = clean_prompt.replace("from the uploaded photo", "").replace("from my photo", "").replace("Take my face and body", "Transform this image to show").strip()
+            
+            # If prompt says "place me in", change to "transform to show" (more direct for Kontext)
+            if "place me in" in clean_prompt.lower():
+                clean_prompt = clean_prompt.replace("place me in", "transform to show").replace("Place me in", "Transform to show")
+            
+            # Enhanced prompt that clearly tells Kontext what to do
+            # Kontext needs clear instructions: keep the person, change the scene
+            enhanced_prompt = f"{clean_prompt}. Keep the person's face, body, and physical appearance exactly the same as in this image. Only change the background, scene, environment, and setting. Maintain the same person, same face, same body features, same clothing style."
             
             print(f"📡 Calling fal.ai Kontext API to edit your photo...")
-            print(f"📝 Using YOUR photo as base, transforming scene based on your prompt")
+            print(f"📝 Original prompt: {prompt[:80]}...")
+            print(f"📝 Cleaned prompt: {clean_prompt[:80]}...")
             
             # Use user's photo as base and edit it according to the prompt
             input_data = {
