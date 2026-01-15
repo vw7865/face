@@ -2289,29 +2289,77 @@ def generate_dating_photo(user_image: Image.Image, reference_image: Image.Image 
             )
         
         print(f"📥 Received response from fal.ai")
+        print(f"📋 Response type: {type(result)}")
+        print(f"📋 Response keys: {result.keys() if isinstance(result, dict) else 'Not a dict'}")
         
         # Get the generated image URL
-        if "images" in result and len(result["images"]) > 0:
-            image_url = result["images"][0].get("url", "")
-            
-            if not image_url:
-                print("❌ No image URL in response")
-                print(f"Response keys: {result.keys() if isinstance(result, dict) else 'Not a dict'}")
-                return None
-            
-            # Download the image
-            print(f"📥 Downloading generated image from: {image_url}")
+        # Check different possible response structures
+        image_url = None
+        
+        if isinstance(result, dict):
+            # Try different response formats
+            if "images" in result and len(result["images"]) > 0:
+                # Standard format: {"images": [{"url": "..."}]}
+                if isinstance(result["images"][0], dict):
+                    image_url = result["images"][0].get("url", "")
+                elif isinstance(result["images"][0], str):
+                    # Direct URL string
+                    image_url = result["images"][0]
+            elif "image" in result:
+                # Alternative format: {"image": {"url": "..."}}
+                if isinstance(result["image"], dict):
+                    image_url = result["image"].get("url", "")
+                elif isinstance(result["image"], str):
+                    image_url = result["image"]
+            elif "url" in result:
+                # Direct URL in response
+                image_url = result["url"]
+        
+        if not image_url:
+            print("❌ No image URL in response")
+            print(f"Full response: {result}")
+            return None
+        
+        # Download the image
+        print(f"📥 Downloading generated image from: {image_url}")
+        try:
             response = requests.get(image_url, timeout=30)
             response.raise_for_status()
             
+            # Check if we got actual image data
+            if len(response.content) < 1000:
+                print(f"⚠️ Warning: Image data is very small ({len(response.content)} bytes), might be corrupted")
+                print(f"Response content preview: {response.content[:100]}")
+            
             # Convert to PIL Image
             generated_image = Image.open(BytesIO(response.content))
-            print(f"✅ Image generated successfully (size: {generated_image.size})")
+            
+            # Verify image is not empty/black
+            if generated_image.size[0] == 0 or generated_image.size[1] == 0:
+                print("❌ Image has zero dimensions")
+                return None
+            
+            # Check if image is completely black (all pixels are black or near-black)
+            # Convert to RGB if needed
+            if generated_image.mode != 'RGB':
+                generated_image = generated_image.convert('RGB')
+            
+            # Sample some pixels to check if image is all black
+            import numpy as np
+            img_array = np.array(generated_image)
+            # Check if average pixel value is very low (mostly black)
+            avg_brightness = np.mean(img_array)
+            if avg_brightness < 10:  # Very dark image
+                print(f"⚠️ Warning: Image appears to be mostly black (avg brightness: {avg_brightness})")
+                # Don't return None, but log the warning
+            
+            print(f"✅ Image generated successfully (size: {generated_image.size}, downloaded: {len(response.content)} bytes, avg brightness: {avg_brightness:.2f})")
             
             return generated_image
-        else:
-            print("❌ No images in response")
-            print(f"Response: {result}")
+        except Exception as e:
+            print(f"❌ Error downloading/processing image: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None
             
     except Exception as e:
