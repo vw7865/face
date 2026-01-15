@@ -2197,31 +2197,16 @@ def generate_dating_photo(user_image: Image.Image, reference_image: Image.Image 
             reference_image.save(ref_buffer, format='JPEG', quality=90)
             ref_buffer.seek(0)
             
-            # Upload both images to fal.ai to get URLs
-            try:
-                # Upload reference image (will be the base image)
-                ref_upload_result = fal_client.subscribe(
-                    "fal-ai/file-to-url",
-                    arguments={"file": ref_buffer.getvalue()}
-                )
-                reference_image_url = ref_upload_result.get("url", "")
-                print(f"✅ Reference image uploaded: {reference_image_url[:50]}...")
-                
-                # Upload user photo (will be used for person replacement)
-                user_upload_result = fal_client.subscribe(
-                    "fal-ai/file-to-url",
-                    arguments={"file": user_buffer.getvalue()}
-                )
-                user_image_url = user_upload_result.get("url", "")
-                print(f"✅ User photo uploaded: {user_image_url[:50]}...")
-            except Exception as e:
-                print(f"Error uploading images: {str(e)}")
-                # Fallback: Use base64 if upload fails
-                import base64
-                ref_base64 = base64.b64encode(ref_buffer.getvalue()).decode('utf-8')
-                reference_image_url = f"data:image/jpeg;base64,{ref_base64}"
-                user_base64 = base64.b64encode(user_buffer.getvalue()).decode('utf-8')
-                user_image_url = f"data:image/jpeg;base64,{user_base64}"
+            # Convert images to base64 data URIs (supported by flux-2-max/edit)
+            # Using base64 directly is more reliable than file-to-url upload
+            import base64
+            ref_base64 = base64.b64encode(ref_buffer.getvalue()).decode('utf-8')
+            reference_image_url = f"data:image/jpeg;base64,{ref_base64}"
+            print(f"✅ Reference image encoded as base64 data URI (size: {len(ref_base64)} chars)")
+            
+            user_base64 = base64.b64encode(user_buffer.getvalue()).decode('utf-8')
+            user_image_url = f"data:image/jpeg;base64,{user_base64}"
+            print(f"✅ User photo encoded as base64 data URI (size: {len(user_base64)} chars)")
             
             # Use flux-2-max/edit with both images
             # Reference image is @Image1 (base), user photo is @Image2
@@ -2253,19 +2238,12 @@ def generate_dating_photo(user_image: Image.Image, reference_image: Image.Image 
             user_buffer.seek(0)
             
             # Upload user image to fal.ai to get URL
-            try:
-                user_upload_result = fal_client.subscribe(
-                    "fal-ai/file-to-url",
-                    arguments={"file": user_buffer.getvalue()}
-                )
-                user_image_url = user_upload_result.get("url", "")
-                print(f"✅ User photo uploaded: {user_image_url[:50]}...")
-            except Exception as e:
-                print(f"Error uploading user photo: {str(e)}")
-                # Fallback: Use base64 if upload fails
-                import base64
-                user_base64 = base64.b64encode(user_buffer.getvalue()).decode('utf-8')
-                user_image_url = f"data:image/jpeg;base64,{user_base64}"
+            # fal.ai file-to-url expects a file object or URL, not raw bytes
+            # We'll use base64 data URI directly which is supported by Kontext
+            import base64
+            user_base64 = base64.b64encode(user_buffer.getvalue()).decode('utf-8')
+            user_image_url = f"data:image/jpeg;base64,{user_base64}"
+            print(f"✅ User photo encoded as base64 data URI (size: {len(user_base64)} chars)")
             
             # Use Kontext to edit the user's photo based on the prompt
             # This way, the user's actual appearance is preserved while the scene changes
