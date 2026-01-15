@@ -2197,16 +2197,34 @@ def generate_dating_photo(user_image: Image.Image, reference_image: Image.Image 
             reference_image.save(ref_buffer, format='JPEG', quality=90)
             ref_buffer.seek(0)
             
-            # Convert images to base64 data URIs (supported by flux-2-max/edit)
-            # Using base64 directly is more reliable than file-to-url upload
-            import base64
-            ref_base64 = base64.b64encode(ref_buffer.getvalue()).decode('utf-8')
-            reference_image_url = f"data:image/jpeg;base64,{ref_base64}"
-            print(f"✅ Reference image encoded as base64 data URI (size: {len(ref_base64)} chars)")
-            
-            user_base64 = base64.b64encode(user_buffer.getvalue()).decode('utf-8')
-            user_image_url = f"data:image/jpeg;base64,{user_base64}"
-            print(f"✅ User photo encoded as base64 data URI (size: {len(user_base64)} chars)")
+            # Upload images using fal.storage.upload (proper method per fal.ai docs)
+            # This is more reliable than base64 data URIs for large images
+            try:
+                # Upload reference image
+                ref_upload_result = fal_client.storage.upload(
+                    ref_buffer.getvalue(),
+                    content_type="image/jpeg"
+                )
+                reference_image_url = ref_upload_result.get("url", "")
+                print(f"✅ Reference image uploaded: {reference_image_url[:50]}...")
+                
+                # Upload user photo
+                user_upload_result = fal_client.storage.upload(
+                    user_buffer.getvalue(),
+                    content_type="image/jpeg"
+                )
+                user_image_url = user_upload_result.get("url", "")
+                print(f"✅ User photo uploaded: {user_image_url[:50]}...")
+            except Exception as e:
+                print(f"⚠️ Error uploading via storage.upload: {str(e)}")
+                print(f"📝 Falling back to base64 data URI...")
+                # Fallback to base64 if upload fails
+                import base64
+                ref_base64 = base64.b64encode(ref_buffer.getvalue()).decode('utf-8')
+                reference_image_url = f"data:image/jpeg;base64,{ref_base64}"
+                user_base64 = base64.b64encode(user_buffer.getvalue()).decode('utf-8')
+                user_image_url = f"data:image/jpeg;base64,{user_base64}"
+                print(f"✅ Images encoded as base64 data URIs")
             
             # Use flux-2-max/edit with both images
             # Reference image is @Image1 (base), user photo is @Image2
