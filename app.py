@@ -2155,6 +2155,164 @@ def dating_photo():
         traceback.print_exc()
         return jsonify({"error": "Server error"}), 500
 
+@app.route('/api/generate-chad', methods=['POST'])
+def generate_chad():
+    """Endpoint for generating Chad version of user's face using fal.ai flux-pro/kontext"""
+    try:
+        # Get multipart form data
+        front_file = request.files.get('front_image')
+        gender = request.form.get('gender', 'Male')
+        
+        if not front_file:
+            return jsonify({"error": "Front image is required"}), 400
+        
+        if not FAL_API_KEY:
+            return jsonify({"error": "FAL API key not configured"}), 500
+        
+        # Read and convert image
+        try:
+            front_bytes = front_file.read()
+            front_image = Image.open(BytesIO(front_bytes))
+        except Exception as e:
+            print(f"Error processing front image: {str(e)}")
+            return jsonify({"error": "Invalid image format"}), 400
+        
+        # Generate chad version
+        generated_image = generate_chad_version(front_image, gender)
+        
+        if generated_image is None:
+            return jsonify({"error": "Failed to generate chad version"}), 500
+        
+        # Convert to base64 for response
+        buffer = BytesIO()
+        generated_image.save(buffer, format='JPEG', quality=90)
+        image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        
+        return jsonify({"image": image_base64})
+        
+    except Exception as e:
+        print(f"Endpoint error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Server error"}), 500
+
+def generate_chad_version(front_image: Image.Image, gender: str = "Male") -> Image.Image:
+    """Generate Chad version using fal.ai flux-pro/kontext with detailed beautification prompt"""
+    if not FAL_API_KEY:
+        print("Error: FAL API key not set")
+        return None
+    
+    try:
+        # Import fal_client (lazy import)
+        try:
+            import fal_client
+        except ImportError:
+            print("ERROR: fal-client not installed. Install with: pip install fal-client")
+            return None
+        
+        # Set API key via environment variable
+        if not os.getenv('FAL_KEY'):
+            os.environ['FAL_KEY'] = FAL_API_KEY
+        
+        print(f"👑 Generating Chad version with fal.ai flux-pro/kontext...")
+        print(f"👤 Gender: {gender}")
+        
+        # Upload image using fal.storage.upload
+        user_buffer = BytesIO()
+        front_image.save(user_buffer, format='JPEG', quality=90)
+        user_buffer.seek(0)
+        
+        try:
+            user_upload_result = fal_client.storage.upload(
+                user_buffer.getvalue(),
+                content_type="image/jpeg"
+            )
+            user_image_url = user_upload_result.get("url", "")
+            print(f"✅ User image uploaded: {user_image_url[:50]}...")
+        except Exception as e:
+            print(f"⚠️ Error uploading via storage.upload: {str(e)}")
+            # Fallback to base64
+            import base64
+            user_base64 = base64.b64encode(user_buffer.getvalue()).decode('utf-8')
+            user_image_url = f"data:image/jpeg;base64,{user_base64}"
+        
+        # Detailed Chad transformation prompt
+        chad_prompt = """Highly detailed photorealistic portrait transformation: Take the exact face and head from the input image and dramatically beautify/enhance it to Chad/model-tier attractiveness (PSL 8–9 range), while preserving the core identity, overall bone structure proportions, ethnicity, and recognizable features of the person.
+
+Make the following improvements in a natural, realistic way:
+- Sharpen and define jawline and chin to strong, angular, forward-grown model-tier shape (square/rectangular gonial angle, prominent ramus).
+- High, prominent, hollowed cheekbones with visible zygomatic projection and natural shadowing.
+- Thicker, fuller, denser hair with perfect Norwood 0 hairline, healthy volume, and ideal hair texture/direction.
+- Symmetrical, harmonious facial features with ideal FWHR, compact midface, positive canthal tilt, hunter eyes with slight hooding, balanced IPD, straight refined nose, full masculine lips, clear flawless skin with even tone and subtle glow.
+- Remove any acne, blemishes, dark circles, asymmetry, or failos; enhance skin texture to glass-skin quality.
+- Maintain realistic lighting, skin pores, subtle facial hair if present, and natural expression — no cartoonish or over-filtered look.
+- Keep the same age, ethnicity, and general head shape — only upgrade to elite-tier masculine beauty.
+
+Ultra-realistic, professional studio lighting, sharp focus, 8K resolution, no artifacts, no plastic surgery look, believable and natural enhancement."""
+        
+        print(f"📡 Calling fal.ai flux-pro/kontext API for Chad transformation...")
+        
+        # Use flux-pro/kontext for single-image editing with detailed prompt
+        input_data = {
+            "image_url": user_image_url,
+            "prompt": chad_prompt,
+            "num_images": 1,
+            "guidance_scale": 8.0,  # Higher guidance for better prompt following
+            "num_inference_steps": 35,  # More steps for better quality
+        }
+        
+        result = fal_client.subscribe(
+            "fal-ai/flux-pro/kontext",
+            arguments=input_data
+        )
+        
+        print(f"📥 Received response from fal.ai")
+        print(f"📋 Response type: {type(result)}")
+        
+        # Get the generated image URL
+        image_url = None
+        if isinstance(result, dict):
+            if "images" in result and len(result["images"]) > 0:
+                if isinstance(result["images"][0], dict):
+                    image_url = result["images"][0].get("url", "")
+                elif isinstance(result["images"][0], str):
+                    image_url = result["images"][0]
+            elif "image" in result:
+                if isinstance(result["image"], dict):
+                    image_url = result["image"].get("url", "")
+                elif isinstance(result["image"], str):
+                    image_url = result["image"]
+            elif "url" in result:
+                image_url = result["url"]
+        
+        if not image_url:
+            print("❌ No image URL in response")
+            print(f"Full response: {result}")
+            return None
+        
+        # Download the image
+        print(f"📥 Downloading generated Chad image from: {image_url}")
+        try:
+            response = requests.get(image_url, timeout=30)
+            response.raise_for_status()
+            
+            if len(response.content) < 1000:
+                print(f"⚠️ Warning: Downloaded image seems too small ({len(response.content)} bytes)")
+            
+            generated_image = Image.open(BytesIO(response.content))
+            print(f"✅ Chad image generated successfully (size: {generated_image.size})")
+            return generated_image
+            
+        except Exception as e:
+            print(f"❌ Error downloading image: {str(e)}")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Error generating Chad version: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
+
 def generate_dating_photo(user_image: Image.Image, reference_image: Image.Image = None, prompt: str = "") -> Image.Image:
     """Generate dating profile photo using fal.ai FLUX.1 Kontext [pro] (image editing) or FLUX.2 [max] (text-to-image)"""
     if not FAL_API_KEY:
