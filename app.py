@@ -1914,7 +1914,7 @@ def get_blackpill_advice(user_input: str) -> str:
                 "X-Title": "Rizzmaxxing Advisor"
             },
             json={
-                "model": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+                "model": "cognitivecomputations/dolphin3.0-mistral-24b",
                 "messages": [
                     {"role": "system", "content": RIZZMAXXING_SYSTEM_PROMPT},
                     {"role": "user", "content": user_input}
@@ -1937,7 +1937,32 @@ def get_blackpill_advice(user_input: str) -> str:
             return error_msg
         
         response.raise_for_status()
-        raw_advice = response.json()["choices"][0]["message"]["content"].strip()
+        
+        # Parse response JSON
+        response_json = response.json()
+        print(f"📋 OpenRouter response structure: {list(response_json.keys())}")
+        
+        # Check if response has expected structure
+        if "choices" not in response_json:
+            print(f"❌ Unexpected response structure: {response_json}")
+            # Try to extract error message if present
+            if "error" in response_json:
+                error_msg = response_json.get("error", {}).get("message", "Unknown error from OpenRouter")
+                return f"API error: {error_msg}"
+            return "API error: Unexpected response format from OpenRouter. Please try again."
+        
+        # Check if choices array exists and has content
+        if not response_json.get("choices") or len(response_json["choices"]) == 0:
+            print(f"❌ No choices in response: {response_json}")
+            return "API error: No response generated. Please try again."
+        
+        # Extract the content
+        try:
+            raw_advice = response_json["choices"][0]["message"]["content"].strip()
+        except (KeyError, IndexError) as e:
+            print(f"❌ Error extracting content from response: {e}")
+            print(f"Response structure: {response_json}")
+            return "API error: Could not parse response. Please try again."
 
         # Post-filter: Replace any remaining dangerous phrases (just in case)
         dangerous = ["rope", "kill yourself", "suicide", "end your life", "self-harm"]
@@ -2086,7 +2111,7 @@ Be brutally honest, use blackpill terminology, and provide actionable advice."""
                 "X-Title": "Looksmaxxing Advisor"
             },
             json={
-                "model": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+                "model": "cognitivecomputations/dolphin3.0-mistral-24b",
                 "messages": [
                     {"role": "system", "content": LOOKSMAXXING_SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt}
@@ -2312,33 +2337,41 @@ def generate_chad_version(front_image: Image.Image, gender: str = "Male") -> Ima
         # Gender-specific terms
         if gender == "Female":
             attractiveness_tier = "elite Stacy/model-tier attractiveness (PSL 8–9 range)"
-            jawline_desc = "delicate, defined, heart-shaped jawline and chin with soft, feminine angles — enhance existing structure, do NOT change bone proportions or ethnicity"
-            cheekbones_desc = "high, defined cheekbones with natural contouring and subtle shadowing for elegant, feminine structure — enhance existing cheekbones, do NOT invent new ones"
-            hair_desc = "thicker, fuller, denser, and healthier hair with perfect hairline and ideal volume — keep the EXACT same hair texture, curl pattern, color, and style direction from the original"
-            features_desc = "perfect facial symmetry, harmony, ideal FWHR, compact midface ratio, positive canthal tilt, doe eyes with balanced IPD, small refined nose bridge (improve shape subtly), full feminine lips, flawless glass-skin with even tone, subtle glow, no acne/blemishes/dark circles/asymmetry/failos"
+            jawline_desc = "delicate, defined, heart-shaped jawline and chin with soft, feminine angles — enhance current bone structure only, do NOT change proportions or ethnicity"
+            cheekbones_desc = "high, defined cheekbones with natural contouring and subtle shadowing for elegant, feminine structure — improve existing cheeks, do NOT invent new ones"
+            hair_desc = "thicker, fuller, denser, and healthier hair with perfect hairline and ideal volume — KEEP THE EXACT SAME curl pattern, coil tightness, texture, color, length, direction, style, and messiness from the original (NO straightening or texture change of any kind)"
+            features_desc = "perfect symmetry/harmony, ideal FWHR, compact midface ratio, positive canthal tilt, doe eyes with balanced IPD, small refined nose bridge (subtle shape improvement only), full feminine lips, flawless glass-skin with even tone and subtle glow — remove acne/blemishes/dark circles/asymmetry/failos only"
             beauty_type = "elite feminine beauty"
             facial_hair_note = ""  # No facial hair for females
+            eye_type = "doe eyes"
         else:  # Male (default)
-            attractiveness_tier = "elite Chad/model-tier attractiveness (PSL 8–9 range)"
-            jawline_desc = "strong, angular, forward-grown, masculine model-tier shape with ideal gonial angle and prominent ramus — enhance existing structure, do NOT change bone proportions or ethnicity"
-            cheekbones_desc = "high, prominent, hollowed cheekbones with natural zygomatic projection and subtle shadowing for chiseled look — enhance existing cheekbones, do NOT invent new ones"
-            hair_desc = "thicker, fuller, denser, and healthier with perfect Norwood 0 hairline and ideal volume — keep the EXACT same hair texture, curl pattern, color, and style direction from the original"
-            features_desc = "perfect facial symmetry, harmony, ideal FWHR, compact midface ratio, positive canthal tilt, hunter eyes with slight hooding, balanced IPD, straight refined nose bridge (improve shape subtly), full masculine lips, flawless glass-skin with even tone, subtle glow, no acne/blemishes/dark circles/asymmetry/failos"
+            attractiveness_tier = "elite Chad/mogger-tier attractiveness (PSL 8–9 range)"
+            jawline_desc = "strong, angular, forward-grown masculine model-tier shape with ideal gonial angle and prominent ramus — enhance current bone structure only, do NOT change proportions or ethnicity"
+            cheekbones_desc = "high, prominent, hollowed cheekbones with natural zygomatic projection and subtle shadowing for chiseled look — improve existing cheeks, do NOT invent new ones"
+            hair_desc = "thicker, fuller, denser, and healthier with perfect Norwood 0 hairline and ideal volume — KEEP THE EXACT SAME curl pattern, coil tightness, texture, color, length, direction, style, and messiness from the original (NO straightening or texture change of any kind)"
+            features_desc = "perfect symmetry/harmony, ideal FWHR, compact midface ratio, positive canthal tilt, hunter eyes with slight hooding, balanced IPD, refined straight nose bridge (subtle shape improvement only), full masculine lips, flawless glass-skin with even tone and subtle glow — remove acne/blemishes/dark circles/asymmetry/failos only"
             beauty_type = "elite masculine beauty"
-            facial_hair_note = ", same facial hair if present"
+            facial_hair_note = " Do NOT add beard, stubble, facial hair, or any facial hair unless it is clearly visible and present in the original selfie — if the man has no beard/stubble, keep the face completely clean-shaven with no additions."
+            eye_type = "hunter eyes with slight hooding"
         
-        # Detailed Chad/Stacy transformation prompt
-        chad_prompt = f"""Ultra-realistic photorealistic portrait enhancement: Take the exact face, head, skin tone, ethnicity, hair texture/type, and overall identity from the input image and dramatically beautify/upgrade it to {attractiveness_tier}, while keeping EVERYTHING else 100% the same — same ethnicity features, exact hair curl/straightness/texture/density direction, same age appearance, same general head shape, same eye color/shape, same nose base structure, same lip shape{facial_hair_note}.
+        # Ultra-detailed mogger transformation prompt
+        chad_prompt = f"""Ultra-realistic photorealistic full-body portrait transformation and face/body swap: Take the EXACT full body, head, face, skin tone, ethnicity, hair texture/type, curl pattern, messiness, direction, length, color, and overall identity from the input selfie image — KEEP THE HAIR 100% AS-IS WITH NO CHANGES WHATSOEVER. Do NOT straighten, loosen, tighten, alter, modify, or change the hair curl/coil pattern, texture, style, direction, or type under any circumstances, regardless of ethnicity.
 
-Only apply natural, believable improvements:
-- Sharpen and define the jawline and chin to {jawline_desc}.
-- Add {cheekbones_desc}.
+Replace the entire person in the reference image with this exact user body, head, and face. Preserve the reference image's exact background, environment, lighting, camera angle, composition, pose, clothing style/fit, and scene details perfectly — no modifications to pose, clothes, background, lighting, or environment.
+
+Add a subtle, natural closed-mouth smile (slight upward lip corners for confident expression, no teeth showing) — enhance the existing expression realistically.
+
+Beautify and upgrade to {attractiveness_tier} while preserving 100% core identity, ethnicity, age, bone structure proportions, hair (KEEP EXACT SAME curl/straightness/texture/color/length/style/messiness as original), and all original features.{facial_hair_note}
+
+Only apply natural, believable enhancements to existing traits:
+- Sharpen and define the existing jawline and chin to {jawline_desc}.
+- Boost existing cheekbones to {cheekbones_desc}.
 - Make hair {hair_desc}.
 - Achieve {features_desc}.
-- Maintain realistic skin pores, natural lighting, subtle facial details, and original expression — no plastic, over-filtered, cartoonish, or fake look.
-- Keep the same ethnicity/racial features, age, and recognizable identity — only upgrade existing traits to {beauty_type} level.
+- Maintain realistic skin pores, natural lighting, subtle facial/body details, original proportions/frame, and exact identity — no cartoonish, over-filtered, plastic, or fake look.
+- Keep the same ethnicity/racial features, age, recognizable identity, and all original characteristics — only upgrade existing traits to {beauty_type} level.
 
-Ultra-detailed, professional studio lighting, sharp 8K focus, no artifacts, no uncanny valley, believable natural enhancement that looks like a real high-tier model version of the same person."""
+Ultra-realistic, professional lighting matching the reference, sharp 8K focus, no artifacts, no uncanny valley, believable natural enhancement that looks like a real high-tier model version of the same person swapped into the reference scene."""
         
         print(f"📡 Calling fal.ai flux-pro/kontext API for Chad transformation...")
         
