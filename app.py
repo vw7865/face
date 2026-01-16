@@ -1931,6 +1931,11 @@ def get_blackpill_advice(user_input: str) -> str:
             print(f"⚠️ OpenRouter rate limit hit (429)")
             return error_msg
         
+        if response.status_code == 402:
+            error_msg = "API spending limit exceeded. The free AI model has reached its usage limit. Please wait a few hours for the limit to reset, or consider upgrading to a paid OpenRouter plan for higher limits."
+            print(f"⚠️ OpenRouter spending limit hit (402)")
+            return error_msg
+        
         response.raise_for_status()
         raw_advice = response.json()["choices"][0]["message"]["content"].strip()
 
@@ -1957,6 +1962,10 @@ def get_blackpill_advice(user_input: str) -> str:
         # Handle rate limiting (429)
         if status_code == 429:
             return "Rate limit exceeded. The free AI model has usage limits. Please wait a few minutes and try again, or consider upgrading to a paid OpenRouter plan for higher limits."
+        
+        # Handle spending limit exceeded (402)
+        if status_code == 402:
+            return "API spending limit exceeded. The free AI model has reached its usage limit. Please wait a few hours for the limit to reset, or consider upgrading to a paid OpenRouter plan for higher limits."
         
         # Handle other HTTP errors
         if status_code:
@@ -2093,6 +2102,11 @@ Be brutally honest, use blackpill terminology, and provide actionable advice."""
             error_msg = "Rate limit exceeded. The free AI model has usage limits. Please wait a few minutes and try again, or consider upgrading to a paid OpenRouter plan for higher limits."
             print(f"⚠️ OpenRouter rate limit hit (429)")
             return error_msg
+        
+        if response.status_code == 402:
+            error_msg = "API spending limit exceeded. The free AI model has reached its usage limit. Please wait a few hours for the limit to reset, or consider upgrading to a paid OpenRouter plan for higher limits."
+            print(f"⚠️ OpenRouter spending limit hit (402)")
+            return error_msg
 
         response.raise_for_status()
         raw_advice = response.json()["choices"][0]["message"]["content"].strip()
@@ -2120,6 +2134,10 @@ Be brutally honest, use blackpill terminology, and provide actionable advice."""
         # Handle rate limiting (429)
         if status_code == 429:
             return "Rate limit exceeded. The free AI model has usage limits. Please wait a few minutes and try again, or consider upgrading to a paid OpenRouter plan for higher limits."
+        
+        # Handle spending limit exceeded (402)
+        if status_code == 402:
+            return "API spending limit exceeded. The free AI model has reached its usage limit. Please wait a few hours for the limit to reset, or consider upgrading to a paid OpenRouter plan for higher limits."
         
         # Handle other HTTP errors
         if status_code:
