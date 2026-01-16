@@ -1925,6 +1925,12 @@ def get_blackpill_advice(user_input: str) -> str:
             timeout=30
         )
 
+        # Check status code before raising
+        if response.status_code == 429:
+            error_msg = "Rate limit exceeded. The free AI model has usage limits. Please wait a few minutes and try again, or consider upgrading to a paid OpenRouter plan for higher limits."
+            print(f"⚠️ OpenRouter rate limit hit (429)")
+            return error_msg
+        
         response.raise_for_status()
         raw_advice = response.json()["choices"][0]["message"]["content"].strip()
 
@@ -1936,10 +1942,17 @@ def get_blackpill_advice(user_input: str) -> str:
         return raw_advice
 
     except requests.exceptions.HTTPError as e:
-        error_text = e.response.text if e.response else str(e)
-        status_code = e.response.status_code if e.response else None
+        status_code = None
+        error_text = str(e)
         
-        print(f"OpenRouter HTTP error ({status_code}): {error_text}")
+        if e.response is not None:
+            status_code = e.response.status_code
+            try:
+                error_text = e.response.text
+            except:
+                error_text = str(e)
+        
+        print(f"❌ OpenRouter HTTP error (Status {status_code}): {error_text[:200]}")
         
         # Handle rate limiting (429)
         if status_code == 429:
@@ -1949,7 +1962,7 @@ def get_blackpill_advice(user_input: str) -> str:
         if status_code:
             return f"API error (Status {status_code}): Please try again in a moment."
         
-        return f"API error: {error_text}"
+        return f"API error: {error_text[:200]}"
     except requests.exceptions.Timeout:
         print("OpenRouter request timed out")
         return "Request timed out. The AI service is taking too long to respond. Please try again."
@@ -2075,6 +2088,12 @@ Be brutally honest, use blackpill terminology, and provide actionable advice."""
             timeout=30
         )
 
+        # Check status code before raising
+        if response.status_code == 429:
+            error_msg = "Rate limit exceeded. The free AI model has usage limits. Please wait a few minutes and try again, or consider upgrading to a paid OpenRouter plan for higher limits."
+            print(f"⚠️ OpenRouter rate limit hit (429)")
+            return error_msg
+
         response.raise_for_status()
         raw_advice = response.json()["choices"][0]["message"]["content"].strip()
 
@@ -2086,10 +2105,17 @@ Be brutally honest, use blackpill terminology, and provide actionable advice."""
         return raw_advice
 
     except requests.exceptions.HTTPError as e:
-        error_text = e.response.text if e.response else str(e)
-        status_code = e.response.status_code if e.response else None
+        status_code = None
+        error_text = str(e)
         
-        print(f"OpenRouter HTTP error ({status_code}): {error_text}")
+        if e.response is not None:
+            status_code = e.response.status_code
+            try:
+                error_text = e.response.text
+            except:
+                error_text = str(e)
+        
+        print(f"❌ OpenRouter HTTP error (Status {status_code}): {error_text[:200]}")
         
         # Handle rate limiting (429)
         if status_code == 429:
@@ -2099,7 +2125,7 @@ Be brutally honest, use blackpill terminology, and provide actionable advice."""
         if status_code:
             return f"API error (Status {status_code}): Please try again in a moment."
         
-        return f"API error: {error_text}"
+        return f"API error: {error_text[:200]}"
     except requests.exceptions.Timeout:
         print("OpenRouter request timed out")
         return "Request timed out. The AI service is taking too long to respond. Please try again."
