@@ -2311,22 +2311,24 @@ def generate_chad_version(front_image: Image.Image, gender: str = "Male") -> Ima
         
         # Gender-specific terms
         if gender == "Female":
-            attractiveness_tier = "Stacy/model-tier attractiveness (PSL 8–9 range)"
-            jawline_desc = "delicate, defined, heart-shaped jawline and chin with soft angles"
-            cheekbones_desc = "high, defined cheekbones with natural contouring and subtle shadowing for elegant structure"
+            attractiveness_tier = "elite Stacy/model-tier attractiveness (PSL 8–9 range)"
+            jawline_desc = "delicate, defined, heart-shaped jawline and chin with soft, feminine angles — enhance existing structure, do NOT change bone proportions or ethnicity"
+            cheekbones_desc = "high, defined cheekbones with natural contouring and subtle shadowing for elegant, feminine structure — enhance existing cheekbones, do NOT invent new ones"
             hair_desc = "thicker, fuller, denser, and healthier hair with perfect hairline and ideal volume — keep the EXACT same hair texture, curl pattern, color, and style direction from the original"
             features_desc = "perfect facial symmetry, harmony, ideal FWHR, compact midface ratio, positive canthal tilt, doe eyes with balanced IPD, small refined nose bridge (improve shape subtly), full feminine lips, flawless glass-skin with even tone, subtle glow, no acne/blemishes/dark circles/asymmetry/failos"
             beauty_type = "elite feminine beauty"
+            facial_hair_note = ""  # No facial hair for females
         else:  # Male (default)
-            attractiveness_tier = "Chad/model-tier attractiveness (PSL 8–9 range)"
+            attractiveness_tier = "elite Chad/model-tier attractiveness (PSL 8–9 range)"
             jawline_desc = "strong, angular, forward-grown, masculine model-tier shape with ideal gonial angle and prominent ramus — enhance existing structure, do NOT change bone proportions or ethnicity"
             cheekbones_desc = "high, prominent, hollowed cheekbones with natural zygomatic projection and subtle shadowing for chiseled look — enhance existing cheekbones, do NOT invent new ones"
             hair_desc = "thicker, fuller, denser, and healthier with perfect Norwood 0 hairline and ideal volume — keep the EXACT same hair texture, curl pattern, color, and style direction from the original"
             features_desc = "perfect facial symmetry, harmony, ideal FWHR, compact midface ratio, positive canthal tilt, hunter eyes with slight hooding, balanced IPD, straight refined nose bridge (improve shape subtly), full masculine lips, flawless glass-skin with even tone, subtle glow, no acne/blemishes/dark circles/asymmetry/failos"
             beauty_type = "elite masculine beauty"
+            facial_hair_note = ", same facial hair if present"
         
         # Detailed Chad/Stacy transformation prompt
-        chad_prompt = f"""Ultra-realistic photorealistic portrait enhancement: Take the exact face, head, skin tone, ethnicity, hair texture/type, and overall identity from the input image and dramatically beautify/upgrade it to {attractiveness_tier}, while keeping EVERYTHING else 100% the same — same ethnicity features, exact hair curl/straightness/texture/density direction, same age appearance, same general head shape, same eye color/shape, same nose base structure, same lip shape, same facial hair if present.
+        chad_prompt = f"""Ultra-realistic photorealistic portrait enhancement: Take the exact face, head, skin tone, ethnicity, hair texture/type, and overall identity from the input image and dramatically beautify/upgrade it to {attractiveness_tier}, while keeping EVERYTHING else 100% the same — same ethnicity features, exact hair curl/straightness/texture/density direction, same age appearance, same general head shape, same eye color/shape, same nose base structure, same lip shape{facial_hair_note}.
 
 Only apply natural, believable improvements:
 - Sharpen and define the jawline and chin to {jawline_desc}.
