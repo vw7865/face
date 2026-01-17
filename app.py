@@ -1932,8 +1932,19 @@ def get_blackpill_advice(user_input: str) -> str:
             return error_msg
         
         if response.status_code == 402:
-            error_msg = "API spending limit exceeded. The free AI model has reached its usage limit. Please wait a few hours for the limit to reset, or consider upgrading to a paid OpenRouter plan for higher limits."
+            error_msg = "API spending limit exceeded. Please add credits to your OpenRouter account to continue using the paid model."
             print(f"⚠️ OpenRouter spending limit hit (402)")
+            return error_msg
+        
+        if response.status_code == 404:
+            error_msg = "Model not found. Please verify that you have added credits to your OpenRouter account and that the model 'cognitivecomputations/dolphin3.0-mistral-24b' is available."
+            print(f"❌ OpenRouter model not found (404)")
+            try:
+                error_data = response.json()
+                if "error" in error_data:
+                    print(f"Error details: {error_data['error']}")
+            except:
+                pass
             return error_msg
         
         response.raise_for_status()
@@ -2129,8 +2140,19 @@ Be brutally honest, use blackpill terminology, and provide actionable advice."""
             return error_msg
         
         if response.status_code == 402:
-            error_msg = "API spending limit exceeded. The free AI model has reached its usage limit. Please wait a few hours for the limit to reset, or consider upgrading to a paid OpenRouter plan for higher limits."
+            error_msg = "API spending limit exceeded. Please add credits to your OpenRouter account to continue using the paid model."
             print(f"⚠️ OpenRouter spending limit hit (402)")
+            return error_msg
+        
+        if response.status_code == 404:
+            error_msg = "Model not found. Please verify that you have added credits to your OpenRouter account and that the model 'cognitivecomputations/dolphin3.0-mistral-24b' is available."
+            print(f"❌ OpenRouter model not found (404)")
+            try:
+                error_data = response.json()
+                if "error" in error_data:
+                    print(f"Error details: {error_data['error']}")
+            except:
+                pass
             return error_msg
 
         response.raise_for_status()
