@@ -1852,8 +1852,8 @@ def analyze_face():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
-# OpenRouter API configuration
-OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
+# Fireworks API configuration
+FIREWORKS_API_KEY = os.getenv('FIREWORKS_API_KEY')
 FAL_API_KEY = os.getenv('FAL_API_KEY')
 
 # System prompt for RizzMaxxing (text conversation analysis)
@@ -1900,21 +1900,19 @@ You are a blackpilled dating and looksmaxxing advisor. Respond ONLY from strict 
 """
 
 def get_blackpill_advice(user_input: str) -> str:
-    """Get blackpill dating advice from OpenRouter Venice model"""
-    if not OPENROUTER_API_KEY:
-        return "Error: OpenRouter API key not set in environment variables."
+    """Get blackpill dating advice from Fireworks AI"""
+    if not FIREWORKS_API_KEY:
+        return "Error: Fireworks API key not set in environment variables."
 
     try:
         response = requests.post(
-            url="https://openrouter.ai/api/v1/chat/completions",
+            url="https://api.fireworks.ai/inference/v1/chat/completions",
             headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://looksmax-backend-production.up.railway.app",
-                "X-Title": "Rizzmaxxing Advisor"
+                "Authorization": f"Bearer {FIREWORKS_API_KEY}",
+                "Content-Type": "application/json"
             },
             json={
-                "model": "cognitivecomputations/dolphin3.0-mistral-24b",
+                "model": "accounts/fireworks/models/dolphin-2-9-2-qwen2-72b",
                 "messages": [
                     {"role": "system", "content": RIZZMAXXING_SYSTEM_PROMPT},
                     {"role": "user", "content": user_input}
@@ -1927,18 +1925,18 @@ def get_blackpill_advice(user_input: str) -> str:
 
         # Check status code before raising
         if response.status_code == 429:
-            error_msg = "Rate limit exceeded. The free AI model has usage limits. Please wait a few minutes and try again, or consider upgrading to a paid OpenRouter plan for higher limits."
-            print(f"⚠️ OpenRouter rate limit hit (429)")
+            error_msg = "Rate limit exceeded. Please wait a few minutes and try again."
+            print(f"⚠️ Fireworks rate limit hit (429)")
             return error_msg
         
-        if response.status_code == 402:
-            error_msg = "API spending limit exceeded. Please add credits to your OpenRouter account to continue using the paid model."
-            print(f"⚠️ OpenRouter spending limit hit (402)")
+        if response.status_code == 401:
+            error_msg = "Authentication failed. Please verify your Fireworks API key is correct."
+            print(f"❌ Fireworks authentication failed (401)")
             return error_msg
         
         if response.status_code == 404:
-            error_msg = "Model not found. Please verify that you have added credits to your OpenRouter account and that the model 'cognitivecomputations/dolphin3.0-mistral-24b' is available."
-            print(f"❌ OpenRouter model not found (404)")
+            error_msg = "Model not found. Please verify that the model 'dolphin-2-9-2-qwen2-72b' is available on Fireworks."
+            print(f"❌ Fireworks model not found (404)")
             try:
                 error_data = response.json()
                 if "error" in error_data:
@@ -1951,16 +1949,16 @@ def get_blackpill_advice(user_input: str) -> str:
         
         # Parse response JSON
         response_json = response.json()
-        print(f"📋 OpenRouter response structure: {list(response_json.keys())}")
+        print(f"📋 Fireworks response structure: {list(response_json.keys())}")
         
         # Check if response has expected structure
         if "choices" not in response_json:
             print(f"❌ Unexpected response structure: {response_json}")
             # Try to extract error message if present
             if "error" in response_json:
-                error_msg = response_json.get("error", {}).get("message", "Unknown error from OpenRouter")
+                error_msg = response_json.get("error", {}).get("message", "Unknown error from Fireworks")
                 return f"API error: {error_msg}"
-            return "API error: Unexpected response format from OpenRouter. Please try again."
+            return "API error: Unexpected response format from Fireworks. Please try again."
         
         # Check if choices array exists and has content
         if not response_json.get("choices") or len(response_json["choices"]) == 0:
@@ -1993,15 +1991,15 @@ def get_blackpill_advice(user_input: str) -> str:
             except:
                 error_text = str(e)
         
-        print(f"❌ OpenRouter HTTP error (Status {status_code}): {error_text[:200]}")
+        print(f"❌ Fireworks HTTP error (Status {status_code}): {error_text[:200]}")
         
         # Handle rate limiting (429)
         if status_code == 429:
-            return "Rate limit exceeded. The free AI model has usage limits. Please wait a few minutes and try again, or consider upgrading to a paid OpenRouter plan for higher limits."
+            return "Rate limit exceeded. Please wait a few minutes and try again."
         
-        # Handle spending limit exceeded (402)
-        if status_code == 402:
-            return "API spending limit exceeded. The free AI model has reached its usage limit. Please wait a few hours for the limit to reset, or consider upgrading to a paid OpenRouter plan for higher limits."
+        # Handle authentication errors (401)
+        if status_code == 401:
+            return "Authentication failed. Please verify your Fireworks API key is correct."
         
         # Handle other HTTP errors
         if status_code:
@@ -2009,7 +2007,7 @@ def get_blackpill_advice(user_input: str) -> str:
         
         return f"API error: {error_text[:200]}"
     except requests.exceptions.Timeout:
-        print("OpenRouter request timed out")
+        print("Fireworks request timed out")
         return "Request timed out. The AI service is taking too long to respond. Please try again."
     except Exception as e:
         print(f"Unexpected error: {str(e)}")
@@ -2037,9 +2035,9 @@ def rizz_advice():
         return jsonify({"error": "Server error"}), 500
 
 def get_looksmax_advice(psl_data: dict, user_inputs: dict) -> str:
-    """Get blackpill looksmaxxing advice from OpenRouter Venice model"""
-    if not OPENROUTER_API_KEY:
-        return "Error: OpenRouter API key not set in environment variables."
+    """Get blackpill looksmaxxing advice from Fireworks AI"""
+    if not FIREWORKS_API_KEY:
+        return "Error: Fireworks API key not set in environment variables."
 
     # Build comprehensive prompt from PSL data and user inputs
     prompt_parts = []
@@ -2114,15 +2112,13 @@ Be brutally honest, use blackpill terminology, and provide actionable advice."""
 
     try:
         response = requests.post(
-            url="https://openrouter.ai/api/v1/chat/completions",
+            url="https://api.fireworks.ai/inference/v1/chat/completions",
             headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://looksmax-backend-production.up.railway.app",
-                "X-Title": "Looksmaxxing Advisor"
+                "Authorization": f"Bearer {FIREWORKS_API_KEY}",
+                "Content-Type": "application/json"
             },
             json={
-                "model": "cognitivecomputations/dolphin3.0-mistral-24b",
+                "model": "accounts/fireworks/models/dolphin-2-9-2-qwen2-72b",
                 "messages": [
                     {"role": "system", "content": LOOKSMAXXING_SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt}
@@ -2135,18 +2131,18 @@ Be brutally honest, use blackpill terminology, and provide actionable advice."""
 
         # Check status code before raising
         if response.status_code == 429:
-            error_msg = "Rate limit exceeded. The free AI model has usage limits. Please wait a few minutes and try again, or consider upgrading to a paid OpenRouter plan for higher limits."
-            print(f"⚠️ OpenRouter rate limit hit (429)")
+            error_msg = "Rate limit exceeded. Please wait a few minutes and try again."
+            print(f"⚠️ Fireworks rate limit hit (429)")
             return error_msg
         
-        if response.status_code == 402:
-            error_msg = "API spending limit exceeded. Please add credits to your OpenRouter account to continue using the paid model."
-            print(f"⚠️ OpenRouter spending limit hit (402)")
+        if response.status_code == 401:
+            error_msg = "Authentication failed. Please verify your Fireworks API key is correct."
+            print(f"❌ Fireworks authentication failed (401)")
             return error_msg
         
         if response.status_code == 404:
-            error_msg = "Model not found. Please verify that you have added credits to your OpenRouter account and that the model 'cognitivecomputations/dolphin3.0-mistral-24b' is available."
-            print(f"❌ OpenRouter model not found (404)")
+            error_msg = "Model not found. Please verify that the model 'dolphin-2-9-2-qwen2-72b' is available on Fireworks."
+            print(f"❌ Fireworks model not found (404)")
             try:
                 error_data = response.json()
                 if "error" in error_data:
@@ -2176,15 +2172,15 @@ Be brutally honest, use blackpill terminology, and provide actionable advice."""
             except:
                 error_text = str(e)
         
-        print(f"❌ OpenRouter HTTP error (Status {status_code}): {error_text[:200]}")
+        print(f"❌ Fireworks HTTP error (Status {status_code}): {error_text[:200]}")
         
         # Handle rate limiting (429)
         if status_code == 429:
-            return "Rate limit exceeded. The free AI model has usage limits. Please wait a few minutes and try again, or consider upgrading to a paid OpenRouter plan for higher limits."
+            return "Rate limit exceeded. Please wait a few minutes and try again."
         
-        # Handle spending limit exceeded (402)
-        if status_code == 402:
-            return "API spending limit exceeded. The free AI model has reached its usage limit. Please wait a few hours for the limit to reset, or consider upgrading to a paid OpenRouter plan for higher limits."
+        # Handle authentication errors (401)
+        if status_code == 401:
+            return "Authentication failed. Please verify your Fireworks API key is correct."
         
         # Handle other HTTP errors
         if status_code:
@@ -2192,7 +2188,7 @@ Be brutally honest, use blackpill terminology, and provide actionable advice."""
         
         return f"API error: {error_text[:200]}"
     except requests.exceptions.Timeout:
-        print("OpenRouter request timed out")
+        print("Fireworks request timed out")
         return "Request timed out. The AI service is taking too long to respond. Please try again."
     except Exception as e:
         print(f"Unexpected error: {str(e)}")
