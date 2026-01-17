@@ -2,6 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Retry deployment
+
 # Install system dependencies for OpenCV and MediaPipe
 # OpenCV needs libGL even with headless version in some cases
 # Debian 12 uses libgl1 instead of libgl1-mesa-glx
@@ -14,7 +16,8 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     libgomp1 \
     wget \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Upgrade pip first for faster installs
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
