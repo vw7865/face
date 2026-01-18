@@ -1881,11 +1881,30 @@ Input format:
 - Conversation text: [the full screenshot/text pasted by user]
 - User comments (if any): [brief context user provides]
 
-Output ONLY:
-1. Blackpill analysis (1–3 short paragraphs max, focused on motives and interest level)
-2. Response Suggestions (2–4 options, each with reply text, tone, and why)
+Output format (STRICT JSON - REQUIRED):
+You MUST output ONLY valid JSON in this exact format:
+{
+  "analysis": "Blackpill analysis (1–3 short paragraphs max, focused on motives and interest level). Do NOT include response suggestions here.",
+  "suggestions": [
+    {
+      "reply": "exact reply text the user should send",
+      "tone": "direct",
+      "why": "blackpill reasoning for why this works"
+    },
+    {
+      "reply": "another exact reply text",
+      "tone": "aloof",
+      "why": "reasoning"
+    }
+  ]
+}
 
-Do NOT add anything else.
+CRITICAL RULES:
+- Output ONLY the JSON object, nothing else
+- No markdown code blocks, no explanations, no extra text
+- The "analysis" field should contain ONLY the analysis, NOT the suggestions
+- Provide 2-4 suggestions in the "suggestions" array
+- Each suggestion must have "reply", "tone", and "why" fields
 """
 
 # System prompt for Looksmaxxing (physical appearance and looksmaxxing advice)
@@ -1922,7 +1941,8 @@ def get_blackpill_advice(user_input: str) -> str:
                     {"role": "user", "content": user_input}
                 ],
                 "temperature": 0.7,
-                "max_tokens": 1000
+                "max_tokens": 1000,
+                "response_format": {"type": "json_object"}
             },
             timeout=30
         )
@@ -1977,12 +1997,39 @@ def get_blackpill_advice(user_input: str) -> str:
             print(f"Response structure: {response_json}")
             return "API error: Could not parse response. Please try again."
 
-        # Post-filter: Replace any remaining dangerous phrases (just in case)
-        dangerous = ["rope", "kill yourself", "suicide", "end your life", "self-harm"]
-        for word in dangerous:
-            raw_advice = raw_advice.replace(word, "[filtered - no harm advice]")
-
-        return raw_advice
+        # Try to parse as JSON
+        import json
+        try:
+            # Remove markdown code blocks if present
+            cleaned = raw_advice
+            if cleaned.startswith("```json"):
+                cleaned = cleaned.replace("```json", "").replace("```", "").strip()
+            elif cleaned.startswith("```"):
+                cleaned = cleaned.replace("```", "").strip()
+            
+            parsed = json.loads(cleaned)
+            # Post-filter dangerous phrases in analysis and suggestions
+            dangerous = ["rope", "kill yourself", "suicide", "end your life", "self-harm"]
+            if "analysis" in parsed:
+                for word in dangerous:
+                    parsed["analysis"] = parsed["analysis"].replace(word, "[filtered - no harm advice]")
+            if "suggestions" in parsed:
+                for suggestion in parsed["suggestions"]:
+                    if "reply" in suggestion:
+                        for word in dangerous:
+                            suggestion["reply"] = suggestion["reply"].replace(word, "[filtered]")
+                    if "why" in suggestion:
+                        for word in dangerous:
+                            suggestion["why"] = suggestion["why"].replace(word, "[filtered]")
+            
+            return json.dumps(parsed)
+        except json.JSONDecodeError:
+            # If not JSON, return as plain text (fallback)
+            print("⚠️ Response is not JSON, returning as plain text")
+            dangerous = ["rope", "kill yourself", "suicide", "end your life", "self-harm"]
+            for word in dangerous:
+                raw_advice = raw_advice.replace(word, "[filtered - no harm advice]")
+            return raw_advice
 
     except requests.exceptions.HTTPError as e:
         status_code = None
@@ -2030,7 +2077,14 @@ def rizz_advice():
             return jsonify({"error": "No input provided"}), 400
 
         advice = get_blackpill_advice(user_input)
-        return jsonify({"advice": advice})
+        # Check if advice is JSON (structured) or plain text (fallback)
+        import json
+        try:
+            parsed = json.loads(advice)
+            return jsonify(parsed)
+        except (json.JSONDecodeError, TypeError):
+            # Fallback: return as plain text in old format
+            return jsonify({"advice": advice})
 
     except Exception as e:
         print(f"Endpoint error: {str(e)}")
