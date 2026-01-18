@@ -1625,8 +1625,11 @@ def calculate_bloat(landmarks):
             score = score_metric(bloat_ratio, ideal_min, ideal_max)
         else:
             # More bloat = worse, score decreases
+            # Strengthen penalty: excess * 150 instead of 25 for harsher detection
+            # At 1.3 ratio → excess = 0.1 → penalty = 15 → score = 85
+            # At 1.4 ratio → excess = 0.2 → penalty = 30 → score = 70
             excess_bloat = bloat_ratio - 1.2
-            penalty = min(50.0, excess_bloat * 25.0)  # Max 50 point penalty
+            penalty = min(70.0, excess_bloat * 150.0)  # Max 70 point penalty, steeper slope
             score = max(0.0, 100.0 - penalty)
         print(f"📊 [CALIBRATION] calculate_bloat: bloat_ratio={bloat_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
         return score
@@ -1719,8 +1722,10 @@ def calculate_skin_quality(landmarks):
         # Invert because lower CV is better
         smoothness_score = 100.0 - smoothness_score_raw
         
-        # Combine symmetry and smoothness
-        skin_quality = (symmetry_score + smoothness_score) / 2
+        # Combine symmetry and smoothness with weighted average
+        # CV smoothness proxy is too uniform (landmarks are rigid) → always high smoothness → not discriminative
+        # Weight symmetry 70% + smoothness 30% to reduce impact of non-discriminative CV metric
+        skin_quality = symmetry_score * 0.7 + smoothness_score * 0.3
         
         if np.isnan(skin_quality) or np.isinf(skin_quality):
             print(f"⚠️ [NAN/INF] calculate_skin_quality: Invalid skin_quality ({skin_quality}), returning 50.0")
