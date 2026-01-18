@@ -1108,28 +1108,26 @@ def calculate_gonial_angle(landmarks):
         if np.isnan(angle) or np.isinf(angle):
             return None  # Return None for null in JSON
         
-        # Custom scoring: Peak at 120° (score = 100), linear drop to ~70 at edges
-        # Score = 100 at 120° (peak)
-        # Score = 70 at 90° (30° away, 30 point drop = 1 point per degree)
-        # Score = 70 at 105° (15° away, but we want 70, so use different slope)
-        # Score = 70 at 130° (10° away, but we want 70, so use different slope)
+        # Custom scoring: Peak at 120° (score = 100), reward square jaws (90-110°) more
+        # Adjusted curve to reward square/blocky jaws (many Chads have square ~100-110° without penalty)
+        # Consensus ideal: 112-130° (most common 115-125° peak; 105-110° ok for ultra-sharp)
         # Use piecewise linear: 
-        #   - 90-105°: linear from 70 to 85 (15° range, 15 point increase = 1 point/degree)
-        #   - 105-120°: linear from 85 to 100 (15° range, 15 point increase = 1 point/degree)
-        #   - 120-130°: linear from 100 to 70 (10° range, 30 point drop = 3 points/degree)
-        #   - Outside 90-130°: clamp to 70
+        #   - 90-110°: linear from 80 to 95 (reward square more, 20° range, 15 point increase = 0.75 points/degree)
+        #   - 110-120°: linear from 95 to 100 (5 point increase over 10° = 0.5 points/degree)
+        #   - 120-130°: linear from 100 to 80 (20 point drop over 10° = 2 points/degree)
+        #   - Outside 90-130°: clamp to 70-80
         
         if angle < 90:
             score = 70.0
-        elif angle <= 105:
-            # 90-105°: linear from 70 to 85
-            score = 70.0 + (angle - 90) * (15.0 / 15.0)  # 1 point per degree
+        elif angle <= 110:
+            # 90-110°: linear from 80 to 95 (reward square jaws more)
+            score = 80.0 + (angle - 90) * (15.0 / 20.0)  # 0.75 points per degree
         elif angle <= 120:
-            # 105-120°: linear from 85 to 100
-            score = 85.0 + (angle - 105) * (15.0 / 15.0)  # 1 point per degree
+            # 110-120°: linear from 95 to 100
+            score = 95.0 + (angle - 110) * (5.0 / 10.0)  # 0.5 points per degree
         elif angle <= 130:
-            # 120-130°: linear from 100 to 70
-            score = 100.0 - (angle - 120) * (30.0 / 10.0)  # 3 points per degree
+            # 120-130°: linear from 100 to 80
+            score = 100.0 - (angle - 120) * (20.0 / 10.0)  # 2 points per degree
         else:
             score = 70.0
         
@@ -1163,8 +1161,10 @@ def calculate_ramus(landmarks, ipd):
             print(f"⚠️ [NAN/INF] calculate_ramus: Invalid ramus_norm ({ramus_norm}), returning 50.0")
             return 50.0
         
-        # Calibrated range - normalized values are typically larger
-        ideal_min, ideal_max = 1.5, 4.5
+        # Calibrated range - lowered to better reward longer ramus (consensus emphasizes long ramus for dimorphism)
+        # Ramus often ~40-60% mandible length → fallback aligns with this
+        # Lower range rewards longer estimated ramus more (boost fallback scores to 60-80)
+        ideal_min, ideal_max = 1.0, 3.5
         score = score_metric(ramus_norm, ideal_min, ideal_max)
         print(f"📊 [CALIBRATION] calculate_ramus: ramus_norm={ramus_norm:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
         return score
@@ -1197,7 +1197,8 @@ def calculate_hyoid_skin_tightness(landmarks, ipd):
         
         # Lower ratio = tighter (better)
         tightness_ratio = 1.0 / sag_ratio
-        ideal_min, ideal_max = 0.85, 1.0
+        # Lower ideal min to 0.80 for more variation (hardcoded curve = straight * 1.1 always ~0.909)
+        ideal_min, ideal_max = 0.80, 1.0
         score = score_metric(tightness_ratio, ideal_min, ideal_max)
         print(f"📊 [CALIBRATION] calculate_hyoid_skin_tightness: sag_ratio={sag_ratio:.6f}, tightness_ratio={tightness_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
         return score
