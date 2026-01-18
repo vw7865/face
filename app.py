@@ -1259,20 +1259,39 @@ def calculate_norwood_stage(landmarks):
             print(f"⚠️ [NAN/INF] calculate_norwood_stage: Invalid forehead_ratio ({forehead_ratio}), returning 50.0")
             return 50.0
         
-        # Ideal range: 0.20-0.35 (good hairline), Receded: 0.35-0.45, Severe: >0.45
-        # Score inversely: lower ratio = better hairline
-        # Convert to score where lower is better
-        if forehead_ratio <= 0.35:
-            # Good hairline - score high
-            ideal_min, ideal_max = 0.20, 0.35
-            score = score_metric(forehead_ratio, ideal_min, ideal_max)
-        else:
-            # Receded - score decreases
-            excess = forehead_ratio - 0.35
-            penalty = min(50.0, excess * 100.0)  # Max 50 point penalty
-            score = max(0.0, 100.0 - penalty)
+        # Stricter inverse scoring: Ideal = low ratio (small forehead, juvenile/mature hairline)
+        # Bad = high ratio (recession)
+        ideal_center = 0.275  # Peak around mid-ideal range
+        ideal_width = 0.075   # Full score within ±0.075 of center (0.20-0.35)
+        max_penalty = 80      # Max drop to ~20 at severe recession
         
-        print(f"📊 [CALIBRATION] calculate_norwood_stage: forehead_ratio={forehead_ratio:.6f}, ideal_range=[0.20, 0.35], score={score:.2f}")
+        deviation = abs(forehead_ratio - ideal_center)
+        
+        if deviation <= ideal_width:
+            # Within ideal range (0.20-0.35) - score 100
+            score = 100.0
+        else:
+            # Outside ideal - apply strict penalty
+            excess = deviation - ideal_width
+            # Stricter penalty: drop faster for recession
+            # For 0.411: excess = 0.061, should score ~40-50
+            # Use steeper linear penalty: every 0.01 excess = ~10 point drop
+            penalty = min(max_penalty, excess * 1000.0)  # 0.061 * 1000 = 61 point penalty
+            score = max(20.0, 100.0 - penalty)
+        
+        # Estimate Norwood stage for logging
+        if forehead_ratio < 0.28:
+            norwood_stage = 0  # Juvenile/low
+        elif forehead_ratio < 0.35:
+            norwood_stage = 1  # Mature
+        elif forehead_ratio < 0.42:
+            norwood_stage = 2  # Early temples
+        elif forehead_ratio < 0.50:
+            norwood_stage = 3  # Noticeable recession
+        else:
+            norwood_stage = 4  # Advanced
+        
+        print(f"📊 [CALIBRATION] calculate_norwood_stage: forehead_ratio={forehead_ratio:.6f}, norwood_stage={norwood_stage}, ideal_center={ideal_center}, score={score:.2f}")
         return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_norwood_stage: {str(e)}")
@@ -1330,18 +1349,27 @@ def calculate_hairline_recession(landmarks):
             print(f"⚠️ [NAN/INF] calculate_hairline_recession: Invalid recession_ratio ({recession_ratio}), returning 50.0")
             return 50.0
         
-        # Ideal range: 0.20-0.35 (minimal recession), Receded: 0.35-0.45, Severe: >0.45
-        # Score inversely: lower ratio = less recession = better
-        if recession_ratio <= 0.35:
-            ideal_min, ideal_max = 0.20, 0.35
-            score = score_metric(recession_ratio, ideal_min, ideal_max)
-        else:
-            # Receded - score decreases
-            excess = recession_ratio - 0.35
-            penalty = min(50.0, excess * 100.0)  # Max 50 point penalty
-            score = max(0.0, 100.0 - penalty)
+        # Stricter inverse scoring: Ideal = low ratio (minimal recession)
+        # Bad = high ratio (significant recession)
+        ideal_center = 0.275  # Peak around mid-ideal range
+        ideal_width = 0.075   # Full score within ±0.075 of center (0.20-0.35)
+        max_penalty = 80      # Max drop to ~20 at severe recession
         
-        print(f"📊 [CALIBRATION] calculate_hairline_recession: recession_ratio={recession_ratio:.6f}, ideal_range=[0.20, 0.35], score={score:.2f}")
+        deviation = abs(recession_ratio - ideal_center)
+        
+        if deviation <= ideal_width:
+            # Within ideal range (0.20-0.35) - score 100
+            score = 100.0
+        else:
+            # Outside ideal - apply strict penalty
+            excess = deviation - ideal_width
+            # Stricter penalty: drop faster for recession
+            # For 0.411: excess = 0.061, should score ~40-50
+            # Use steeper linear penalty: every 0.01 excess = ~10 point drop
+            penalty = min(max_penalty, excess * 1000.0)  # 0.061 * 1000 = 61 point penalty
+            score = max(20.0, 100.0 - penalty)
+        
+        print(f"📊 [CALIBRATION] calculate_hairline_recession: recession_ratio={recession_ratio:.6f}, ideal_center={ideal_center}, score={score:.2f}")
         return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_hairline_recession: {str(e)}")
