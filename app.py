@@ -842,9 +842,15 @@ def calculate_maxilla_projection(landmarks, ipd):
             return 50.0
         
         # Calibrated range - z values normalized by IPD are typically larger
-        # Use wider range to avoid zero scores
-        ideal_min, ideal_max = 0.5, 3.0
-        score = score_metric(projection_norm, ideal_min, ideal_max)
+        # Tighten range to better reward strong forward growth (consensus: 1.0-2.5+ ideal)
+        # Strong projection like Cavill/O'Pry ~1.5-2.5 normalized
+        ideal_min, ideal_max = 0.8, 2.8
+        # Handle negative projection (recessed maxilla) with penalty
+        if projection_norm < 0:
+            # Recessed: score decreases rapidly
+            score = max(20.0, 50.0 + projection_norm * 100.0)
+        else:
+            score = score_metric(projection_norm, ideal_min, ideal_max)
         print(f"📊 [CALIBRATION] calculate_maxilla_projection: projection_norm={projection_norm:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
         return score
     except Exception as e:
@@ -877,8 +883,9 @@ def calculate_nose_metrics(landmarks, ipd):
             print(f"⚠️ [NAN/INF] calculate_nose_metrics: Invalid values (nose_ratio={nose_ratio}, nose_proj_norm={nose_proj_norm}), returning 50.0")
             return 50.0
         
-        # Calibrated ranges - nose ratio is reasonable, but projection needs wider range
-        length_ideal_min, length_ideal_max = 0.25, 0.40
+        # Calibrated ranges - widen nose length slightly to be less harsh on longer noses
+        # (common in attractive men, slight elongation acceptable)
+        length_ideal_min, length_ideal_max = 0.25, 0.45
         proj_ideal_min, proj_ideal_max = 0.3, 2.5
         length_score = score_metric(nose_ratio, length_ideal_min, length_ideal_max)
         proj_score = score_metric(nose_proj_norm, proj_ideal_min, proj_ideal_max)
@@ -917,9 +924,10 @@ def calculate_ipd_score(landmarks):
             print(f"⚠️ [NAN/INF] calculate_ipd_score: Invalid ipd_ratio ({ipd_ratio}), returning 50.0")
             return 50.0
         
-        # Ideal range: 0.25-0.50 (adjusted for actual measurements - wider range)
-        # Typical IPD/face_width ratio is 0.30-0.45 for attractive faces
-        ideal_min, ideal_max = 0.25, 0.50
+        # Ideal range: 0.40-0.47 (tightened to better penalize wide-set eyes)
+        # Consensus: Attractive male ES ratio ~0.42-0.47; below 0.40 wide-set (penalty), above 0.48 close-set
+        # Peak scoring at 0.44-0.45, taper to 60-70 at edges, 40-50 below 0.35/above 0.50
+        ideal_min, ideal_max = 0.40, 0.47
         score = score_metric(ipd_ratio, ideal_min, ideal_max)
         print(f"📊 [CALIBRATION] calculate_ipd_score: ipd_ratio={ipd_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
         
