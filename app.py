@@ -1916,7 +1916,7 @@ def get_blackpill_advice(user_input: str) -> str:
                 "Content-Type": "application/json"
             },
             json={
-                "model": "fireworks/llama-v3p1-70b-instruct",
+                "model": "fireworks/llama-v3p3-70b-instruct",
                 "messages": [
                     {"role": "system", "content": RIZZMAXXING_SYSTEM_PROMPT},
                     {"role": "user", "content": user_input}
@@ -1939,7 +1939,7 @@ def get_blackpill_advice(user_input: str) -> str:
             return error_msg
         
         if response.status_code == 404:
-            error_msg = "Model not found. Please verify that the model 'fireworks/llama-v3p1-70b-instruct' is available on Fireworks."
+            error_msg = "Model not found. Please verify that the model 'fireworks/llama-v3p3-70b-instruct' is available on Fireworks."
             print(f"❌ Fireworks model not found (404)")
             try:
                 error_data = response.json()
@@ -2122,7 +2122,7 @@ Be brutally honest, use blackpill terminology, and provide actionable advice."""
                 "Content-Type": "application/json"
             },
             json={
-                "model": "fireworks/llama-v3p1-70b-instruct",
+                "model": "fireworks/llama-v3p3-70b-instruct",
                 "messages": [
                     {"role": "system", "content": LOOKSMAXXING_SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt}
@@ -2145,7 +2145,7 @@ Be brutally honest, use blackpill terminology, and provide actionable advice."""
             return error_msg
         
         if response.status_code == 404:
-            error_msg = "Model not found. Please verify that the model 'fireworks/llama-v3p1-70b-instruct' is available on Fireworks."
+            error_msg = "Model not found. Please verify that the model 'fireworks/llama-v3p3-70b-instruct' is available on Fireworks."
             print(f"❌ Fireworks model not found (404)")
             try:
                 error_data = response.json()
