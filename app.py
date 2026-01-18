@@ -3,6 +3,17 @@ LooksMax AI Backend API
 Face analysis using MediaPipe Face Mesh
 """
 
+# Protobuf fix - must be before any MediaPipe/TensorFlow imports
+# Fixes AttributeError: 'MessageFactory' object has no attribute 'GetPrototype'
+try:
+    import google.protobuf.message_factory as mf
+    from google.protobuf import message_factory
+    if not hasattr(mf.MessageFactory, 'GetPrototype'):
+        mf.MessageFactory.GetPrototype = lambda self, desc: message_factory.GetMessageClass(desc)
+        print("✅ Protobuf monkey-patch applied (fixes MediaPipe/TF compatibility)")
+except Exception as e:
+    print(f"⚠️ Protobuf monkey-patch failed (non-critical): {e}")
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import cv2
