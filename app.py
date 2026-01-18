@@ -594,10 +594,34 @@ def calculate_eyelid_exposure(landmarks, ipd):
             print(f"⚠️ [NAN/INF] calculate_eyelid_exposure: Invalid aperture value ({aperture}), returning 50.0")
             return 50.0
         
-        # Ideal range: 0.25-0.35
-        ideal_min, ideal_max = 0.25, 0.35
+        # Detect smile: measure mouth openness (distance between upper and lower lip)
+        # Smiling reduces apparent aperture (squint/partial hooding) → widen ideal range
+        try:
+            upper_lip = landmarks[LANDMARKS['upper_lip_top']]
+            lower_lip = landmarks[LANDMARKS['lower_lip_bottom']]
+            mouth_openness = euclidean_distance(upper_lip, lower_lip)
+            
+            # Normalize by IPD for consistent threshold (use provided ipd parameter)
+            if ipd > 0:
+                mouth_openness_norm = mouth_openness / ipd
+                # Threshold: if mouth openness > 0.08 (normalized), likely smiling
+                is_smiling = mouth_openness_norm > 0.08
+            else:
+                is_smiling = False
+        except:
+            is_smiling = False
+        
+        # Adjust ideal range based on expression
+        if is_smiling:
+            # Widen ideal range for smiling faces (aperture appears smaller due to squint)
+            ideal_min, ideal_max = 0.22, 0.38
+        else:
+            # Normal ideal range for neutral faces
+            ideal_min, ideal_max = 0.25, 0.35
+        
         score = score_metric(aperture, ideal_min, ideal_max)
-        print(f"📊 [CALIBRATION] calculate_eyelid_exposure: aperture={aperture:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        smile_status = "smiling" if is_smiling else "neutral"
+        print(f"📊 [CALIBRATION] calculate_eyelid_exposure: aperture={aperture:.6f}, expression={smile_status}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
         return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_eyelid_exposure: {str(e)}")
@@ -623,11 +647,16 @@ def calculate_orbital_depth(landmarks, ipd):
             print(f"⚠️ [NAN/INF] calculate_orbital_depth: Invalid depth_norm ({depth_norm}), returning 50.0")
             return 50.0
         
-        # More negative = deeper set (generally more attractive)
-        # Ideal range: -0.05 to -0.15
-        ideal_min, ideal_max = 0.05, 0.15
-        score = score_metric(abs(depth_norm), ideal_min, ideal_max)
-        print(f"📊 [CALIBRATION] calculate_orbital_depth: depth_norm={depth_norm:.6f}, abs={abs(depth_norm):.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        # More negative = deeper set (generally more attractive - hunter eyes)
+        # Negative depth_norm = eye behind brow/cheek plane = deep-set = attractive
+        # Positive depth_norm = eye forward of plane = bug eyes = less attractive
+        # Ideal range: -0.15 to -0.05 (negative = deep-set)
+        ideal_min, ideal_max = -0.15, -0.05
+        # Invert sign for scoring (negative depth_norm should score high)
+        # If depth_norm is -0.10 (deep-set), -depth_norm = 0.10, score high
+        # If depth_norm is +0.10 (bug eyes), -depth_norm = -0.10, score low
+        score = score_metric(-depth_norm, 0.05, 0.15)  # Invert sign, then score
+        print(f"📊 [CALIBRATION] calculate_orbital_depth: depth_norm={depth_norm:.6f} (negative=deep-set), ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
         return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_orbital_depth: {str(e)}")
