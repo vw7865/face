@@ -1093,9 +1093,12 @@ def calculate_mandible(landmarks, ipd):
         traceback.print_exc()
         return 50.0
 
-def calculate_gonial_angle(landmarks):
-    """Calculate gonial angle (jaw angle)"""
+def calculate_gonial_angle(landmarks, gender='Male'):
+    """Calculate gonial angle (jaw angle) - Male only (more relevant for masculine jaw structure)"""
     try:
+        # Gonial angle is more relevant for male jaw structure assessment
+        if gender != 'Male':
+            return None
         gonion = landmarks[LANDMARKS['gonion_left']]
         chin = landmarks[LANDMARKS['menton']]
         ramus_top = landmarks[LANDMARKS['jaw_left']]
@@ -1267,9 +1270,12 @@ def calculate_forehead_slope(landmarks):
     except:
         return None
 
-def calculate_norwood_stage(landmarks):
-    """Calculate Norwood stage (hairline recession) using forehead measurements"""
+def calculate_norwood_stage(landmarks, gender='Male'):
+    """Calculate Norwood stage (hairline recession) using forehead measurements - Male only"""
     try:
+        # Norwood scale is male-specific (male pattern baldness)
+        if gender != 'Male':
+            return None
         # Use forehead height as proxy for hairline position
         # Since glabella and forehead_center are the same landmark, use nasion to forehead_top distance
         nasion = landmarks[LANDMARKS['nasion']]
@@ -1359,9 +1365,12 @@ def calculate_forehead_projection(landmarks, ipd):
         traceback.print_exc()
         return 50.0
 
-def calculate_hairline_recession(landmarks):
-    """Calculate hairline recession using forehead measurements"""
+def calculate_hairline_recession(landmarks, gender='Male'):
+    """Calculate hairline recession using forehead measurements - Male only"""
     try:
+        # Hairline recession (male pattern baldness) is male-specific
+        if gender != 'Male':
+            return None
         # Use forehead height as proxy for recession
         nasion = landmarks[LANDMARKS['nasion']]
         forehead_top = landmarks[LANDMARKS['forehead_center']]
@@ -1942,23 +1951,34 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
             calculate_compactness(front_landmarks)
         ) / 6
         
-        lower_third_avg = (
-            calculate_lips(front_landmarks, ipd) +
-            calculate_mandible(front_landmarks, ipd) +
-            (calculate_gonial_angle(front_landmarks) or 50.0) +
-            calculate_ramus(front_landmarks, ipd) +
-            calculate_hyoid_skin_tightness(front_landmarks, ipd) +
+        # Lower third metrics - exclude gonial angle for females
+        gonial_score = calculate_gonial_angle(front_landmarks, gender) if gender == 'Male' else None
+        lower_third_metrics = [
+            calculate_lips(front_landmarks, ipd),
+            calculate_mandible(front_landmarks, ipd),
+            gonial_score if gonial_score is not None else (50.0 if gender == 'Male' else None),
+            calculate_ramus(front_landmarks, ipd),
+            calculate_hyoid_skin_tightness(front_landmarks, ipd),
             calculate_jaw_width(front_landmarks, ipd)
-        ) / 6
+        ]
+        # Filter out None values for females and calculate average
+        lower_third_valid = [m for m in lower_third_metrics if m is not None]
+        lower_third_avg = sum(lower_third_valid) / len(lower_third_valid) if lower_third_valid else 50.0
         
-        upper_third_avg = (
-            (calculate_forehead_slope(front_landmarks) or 50.0) +
-            calculate_norwood_stage(front_landmarks) +
-            calculate_forehead_projection(front_landmarks, ipd) +
-            calculate_hairline_recession(front_landmarks) +
-            calculate_hair_thinning(front_landmarks) +
-            calculate_hairline_density(front_landmarks)
-        ) / 6
+        # Upper third metrics - exclude male-specific metrics for females
+        norwood_score = calculate_norwood_stage(front_landmarks, gender) if gender == 'Male' else None
+        recession_score = calculate_hairline_recession(front_landmarks, gender) if gender == 'Male' else None
+        upper_third_metrics = [
+            calculate_forehead_slope(front_landmarks) or 50.0,
+            norwood_score if norwood_score is not None else (50.0 if gender == 'Male' else None),
+            calculate_forehead_projection(front_landmarks, ipd),
+            recession_score if recession_score is not None else (50.0 if gender == 'Male' else None),
+            calculate_hair_thinning(front_landmarks),  # Gender-neutral (women can have thinning too)
+            calculate_hairline_density(front_landmarks)  # Gender-neutral (women can have density issues too)
+        ]
+        # Filter out None values for females and calculate average
+        upper_third_valid = [m for m in upper_third_metrics if m is not None]
+        upper_third_avg = sum(upper_third_valid) / len(upper_third_valid) if upper_third_valid else 50.0
         
         misc_avg = (
             calculate_skin_quality(front_landmarks) +
@@ -2023,6 +2043,11 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
                 improvement = potential - psl
                 print(f"📊 [CALIBRATION] POTENTIAL_IMPROVEMENT: improvement={improvement:.2f} points ({improvement/psl*100:.1f}% increase)")
         
+        # Calculate male-specific metrics (return None for females)
+        norwood_score = calculate_norwood_stage(front_landmarks, gender)
+        recession_score = calculate_hairline_recession(front_landmarks, gender)
+        gonial_score = calculate_gonial_angle(front_landmarks, gender)
+        
         return {
             'overall': {
                 'psl': round(psl, 1) if psl is not None else None,
@@ -2047,17 +2072,17 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
             'lowerThird': {
                 'lips': round(calculate_lips(front_landmarks, ipd), 1),
                 'mandible': round(calculate_mandible(front_landmarks, ipd), 1),
-                'gonialAngle': calculate_gonial_angle(front_landmarks),
+                'gonialAngle': round(gonial_score, 1) if gonial_score is not None else None,  # None for females
                 'ramus': round(calculate_ramus(front_landmarks, ipd), 1),
                 'hyoidSkinTightness': round(calculate_hyoid_skin_tightness(front_landmarks, ipd), 1),
                 'jawWidth': round(calculate_jaw_width(front_landmarks, ipd), 1)
             },
             'upperThird': {
-                'norwoodStage': round(calculate_norwood_stage(front_landmarks), 1),
+                'norwoodStage': round(norwood_score, 1) if norwood_score is not None else None,  # None for females
                 'foreheadProjection': round(calculate_forehead_projection(front_landmarks, ipd), 1),
-                'hairlineRecession': round(calculate_hairline_recession(front_landmarks), 1),
-                'hairThinning': round(calculate_hair_thinning(front_landmarks), 1),
-                'hairlineDensity': round(calculate_hairline_density(front_landmarks), 1),
+                'hairlineRecession': round(recession_score, 1) if recession_score is not None else None,  # None for females
+                'hairThinning': round(calculate_hair_thinning(front_landmarks), 1),  # Gender-neutral
+                'hairlineDensity': round(calculate_hairline_density(front_landmarks), 1),  # Gender-neutral
                 'foreheadSlope': calculate_forehead_slope(front_landmarks)
             },
             'miscellaneous': {
