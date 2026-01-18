@@ -1578,11 +1578,16 @@ def calculate_potential_psl(current_psl, eyes_avg, midface_avg, lower_third_avg,
     if current_psl is None or np.isnan(current_psl) or np.isinf(current_psl):
         return current_psl
     
+    # Convert current PSL from 0-100 scale to 0-8 scale for AI
+    # Current PSL is on 0-100 scale (e.g., 42.1), convert to 0-8 scale (e.g., 3.37)
+    current_psl_0_8 = (current_psl / 100.0) * 8.0
+    current_psl_0_8 = max(0.0, min(8.0, current_psl_0_8))  # Clamp to 0-8 range
+    
     try:
-        # Build prompt with current metrics
+        # Build prompt with current metrics (using 0-8 scale for AI)
         prompt = f"""Analyze this person's looksmaxxing potential and determine what PSL they could realistically achieve with MAXIMUM looksmaxxing effort.
 
-Current PSL: {current_psl:.1f}
+Current PSL: {current_psl_0_8:.2f} (on 0-8 scale)
 Gender: {gender}
 
 Current Feature Scores (0-100 scale):
@@ -1641,23 +1646,32 @@ What is the MAXIMUM potential PSL this person could achieve with aggressive look
                 # Extract number from response (handle cases like "6.5" or "The potential is 6.5" or "6.5/8")
                 numbers = re.findall(r'\d+\.?\d*', content)
                 if numbers:
-                    potential_psl = float(numbers[0])
+                    potential_psl_0_8 = float(numbers[0])
                     # Ensure it's in valid PSL range (0-8)
-                    potential_psl = max(0.0, min(8.0, potential_psl))
-                    # Ensure potential is at least current PSL (can't go backwards)
-                    potential_psl = max(current_psl, potential_psl)
+                    potential_psl_0_8 = max(0.0, min(8.0, potential_psl_0_8))
+                    # Ensure potential is at least current PSL (can't go backwards) - on 0-8 scale
+                    potential_psl_0_8 = max(current_psl_0_8, potential_psl_0_8)
                     
-                    # If AI returned same value, add minimum improvement
-                    if abs(potential_psl - current_psl) < 0.1:
-                        # Add minimum improvement based on current PSL
-                        if current_psl < 7.0:
-                            potential_psl = min(8.0, current_psl + 0.5)  # +0.5 for lower PSL
+                    # If AI returned same value, add minimum improvement (on 0-8 scale)
+                    if abs(potential_psl_0_8 - current_psl_0_8) < 0.1:
+                        # Add minimum improvement based on current PSL (on 0-8 scale)
+                        if current_psl_0_8 < 5.6:  # 5.6 on 0-8 scale = 70 on 0-100 scale
+                            potential_psl_0_8 = min(8.0, current_psl_0_8 + 0.5)  # +0.5 for lower PSL
                         else:
-                            potential_psl = min(8.0, current_psl + 0.3)  # +0.3 for higher PSL
-                        print(f"✅ AI Potential PSL: {potential_psl:.1f} (from current {current_psl:.1f}, added minimum improvement)")
+                            potential_psl_0_8 = min(8.0, current_psl_0_8 + 0.3)  # +0.3 for higher PSL
+                        print(f"✅ AI Potential PSL (0-8): {potential_psl_0_8:.2f} (from current {current_psl_0_8:.2f}, added minimum improvement)")
                     else:
-                        print(f"✅ AI Potential PSL: {potential_psl:.1f} (from current {current_psl:.1f})")
-                    return potential_psl
+                        print(f"✅ AI Potential PSL (0-8): {potential_psl_0_8:.2f} (from current {current_psl_0_8:.2f})")
+                    
+                    # Convert back from 0-8 scale to 0-100 scale
+                    potential_psl_0_100 = (potential_psl_0_8 / 8.0) * 100.0
+                    potential_psl_0_100 = max(0.0, min(100.0, potential_psl_0_100))  # Clamp to 0-100 range
+                    
+                    # Ensure potential is higher than current (on 0-100 scale)
+                    potential_psl_0_100 = max(current_psl, potential_psl_0_100)
+                    
+                    print(f"✅ AI Potential PSL: {potential_psl_0_100:.1f} (0-100 scale, from current {current_psl:.1f})")
+                    return potential_psl_0_100
                 else:
                     print(f"⚠️ Could not extract number from AI response: {content}")
             else:
@@ -1672,9 +1686,14 @@ What is the MAXIMUM potential PSL this person could achieve with aggressive look
         import traceback
         traceback.print_exc()
     
-    # Fallback to current PSL if AI fails
-    print(f"⚠️ Using current PSL as potential fallback: {current_psl:.1f}")
-    return current_psl
+    # Fallback to current PSL + minimum improvement if AI fails
+    # Add minimum improvement to ensure potential is always higher
+    if current_psl < 70.0:  # 70 on 0-100 scale
+        fallback_potential = min(100.0, current_psl + 6.25)  # +0.5 on 0-8 scale = +6.25 on 0-100 scale
+    else:
+        fallback_potential = min(100.0, current_psl + 3.75)  # +0.3 on 0-8 scale = +3.75 on 0-100 scale
+    print(f"⚠️ Using current PSL + minimum improvement as potential fallback: {fallback_potential:.1f} (from current {current_psl:.1f})")
+    return fallback_potential
 
 def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_image_array=None):
     """Calculate all facial metrics
