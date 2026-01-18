@@ -905,31 +905,34 @@ def calculate_ipd_score(landmarks):
         return 50.0
 
 def calculate_fwhr(landmarks):
-    """Calculate Facial Width-to-Height Ratio"""
+    """Calculate Facial Width-to-Height Ratio (using midface height: mid-brow to upper lip)"""
     try:
         bizygomatic_width = euclidean_distance(
             landmarks[LANDMARKS['zygion_left']],
             landmarks[LANDMARKS['zygion_right']]
         )
-        face_height = euclidean_distance(
-            landmarks[LANDMARKS['forehead_center']],
-            landmarks[LANDMARKS['menton']]
+        # FWHR should use MIDFACE height (mid-brow to upper lip), not full face height
+        # This is the standard definition: bizygomatic width / midface height
+        midface_height = euclidean_distance(
+            landmarks[LANDMARKS['glabella']],  # Mid-brow (between brows)
+            landmarks[LANDMARKS['subnasale']]   # Upper lip (below nose)
         )
         
-        if face_height <= 0 or np.isnan(face_height) or np.isnan(bizygomatic_width):
-            print(f"⚠️ [VALIDATION FAIL] calculate_fwhr: Invalid values (face_height={face_height}, bizygomatic_width={bizygomatic_width}), returning 50.0")
+        if midface_height <= 0 or np.isnan(midface_height) or np.isnan(bizygomatic_width):
+            print(f"⚠️ [VALIDATION FAIL] calculate_fwhr: Invalid values (midface_height={midface_height}, bizygomatic_width={bizygomatic_width}), returning 50.0")
             return 50.0
         
-        fwhr = bizygomatic_width / face_height
+        fwhr = bizygomatic_width / midface_height
         
         if np.isnan(fwhr) or np.isinf(fwhr):
             print(f"⚠️ [NAN/INF] calculate_fwhr: Invalid fwhr ({fwhr}), returning 50.0")
             return 50.0
         
-        # Wider range - fWHR typically 1.5-2.5 for normal faces, attractive can be wider
-        ideal_min, ideal_max = (1.2, 2.8)  # Even wider range for attractive faces
+        # Ideal range for attractive men: 1.8-2.0+ (wider masculine faces)
+        # Allow wider range: 1.7-2.2 for very attractive faces
+        ideal_min, ideal_max = (1.7, 2.2)
         score = score_metric(fwhr, ideal_min, ideal_max)
-        print(f"📊 [CALIBRATION] calculate_fwhr: fwhr={fwhr:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        print(f"📊 [CALIBRATION] calculate_fwhr: fwhr={fwhr:.6f} (midface), ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
         return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_fwhr: {str(e)}")
@@ -1000,8 +1003,9 @@ def calculate_lips(landmarks, ipd):
             print(f"⚠️ [NAN/INF] calculate_lips: Invalid fullness ({fullness}), returning 50.0")
             return 50.0
         
-        # Ideal range: 0.08-0.12
-        ideal_min, ideal_max = 0.08, 0.12
+        # Ideal range for men: 0.12-0.22 (masculine faces prefer moderate/thinner lips, not ultra-full)
+        # Wider range accommodates natural variation in lip fullness
+        ideal_min, ideal_max = 0.12, 0.22
         score = score_metric(fullness, ideal_min, ideal_max)
         print(f"📊 [CALIBRATION] calculate_lips: fullness={fullness:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
         return score
@@ -1066,8 +1070,9 @@ def calculate_gonial_angle(landmarks):
         if np.isnan(angle) or np.isinf(angle):
             return None  # Return None for null in JSON
         
-        # Ideal range: 115-125° (more acute = more masculine)
-        ideal_min, ideal_max = 115, 125
+        # Ideal range: 112-125° (more acute = more masculine, but 90° is still good for square/strong jaws)
+        # Allow wider range: 105-130° to accommodate square jaws (90°) and sharp angles (up to 130°)
+        ideal_min, ideal_max = 105, 130
         score = score_metric(angle, ideal_min, ideal_max)
         print(f"📊 [CALIBRATION] calculate_gonial_angle: angle={angle:.2f}°, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
         return score
@@ -1081,9 +1086,20 @@ def calculate_ramus(landmarks, ipd):
         ramus_top = landmarks[LANDMARKS['jaw_left']]
         
         ramus_length = euclidean_distance(gonion, ramus_top)
+        
+        # Check for detection failure (zero or very small ramus length)
+        if ramus_length <= 0.001:  # Very small = likely detection failure
+            print(f"⚠️ [VALIDATION FAIL] calculate_ramus: Detection failure (ramus_length={ramus_length:.6f}), using fallback")
+            # Fallback: estimate ramus from mandible length
+            chin = landmarks[LANDMARKS['menton']]
+            mandible_length = euclidean_distance(gonion, chin)
+            # Ramus is typically 40-60% of mandible length
+            ramus_length = mandible_length * 0.5  # Use 50% as estimate
+            print(f"⚠️ [FALLBACK] calculate_ramus: Using estimated ramus_length={ramus_length:.6f} (50% of mandible)")
+        
         ramus_norm = normalize_by_ipd(ramus_length, ipd)
         
-        if np.isnan(ramus_norm) or np.isinf(ramus_norm):
+        if np.isnan(ramus_norm) or np.isinf(ramus_norm) or ramus_norm <= 0:
             print(f"⚠️ [NAN/INF] calculate_ramus: Invalid ramus_norm ({ramus_norm}), returning 50.0")
             return 50.0
         
@@ -1180,8 +1196,9 @@ def calculate_forehead_slope(landmarks):
         if np.isnan(slope) or np.isinf(slope):
             return None
         
-        # Ideal range: 5-15° (slight backward slope)
-        ideal_min, ideal_max = 5, 15
+        # Ideal range: 0-25° (allow vertical to slight backward slope) - widened range
+        # 0° (vertical) is acceptable, slight backward slope (5-15°) is ideal
+        ideal_min, ideal_max = 0, 25
         slope_abs = abs(slope)
         score = score_metric(slope_abs, ideal_min, ideal_max)
         print(f"📊 [CALIBRATION] calculate_forehead_slope: slope={slope:.2f}°, abs={slope_abs:.2f}°, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
@@ -1190,37 +1207,49 @@ def calculate_forehead_slope(landmarks):
         return None
 
 def calculate_norwood_stage(landmarks):
-    """Calculate Norwood stage (hairline recession) using hairline position"""
+    """Calculate Norwood stage (hairline recession) using forehead measurements"""
     try:
-        # Measure hairline position relative to forehead
-        glabella = landmarks[LANDMARKS['glabella']]
-        forehead_top = landmarks[LANDMARKS['forehead_center']]
+        # Use forehead height as proxy for hairline position
+        # Since glabella and forehead_center are the same landmark, use nasion to forehead_top distance
         nasion = landmarks[LANDMARKS['nasion']]
+        forehead_top = landmarks[LANDMARKS['forehead_center']]
         
-        # Calculate hairline height (distance from nasion to forehead top)
+        # Calculate forehead height (distance from nasion to forehead top)
         forehead_height = euclidean_distance(nasion, forehead_top)
         
-        # Calculate hairline position (distance from glabella to nasion as proxy)
-        hairline_position = euclidean_distance(glabella, nasion)
+        # Get face height for normalization
+        face_height = euclidean_distance(
+            landmarks[LANDMARKS['forehead_center']],
+            landmarks[LANDMARKS['menton']]
+        )
         
-        if forehead_height <= 0:
-            print(f"⚠️ [VALIDATION FAIL] calculate_norwood_stage: Invalid forehead_height ({forehead_height}), returning 50.0")
+        if face_height <= 0 or forehead_height <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_norwood_stage: Invalid measurements (forehead_height={forehead_height}, face_height={face_height}), returning 50.0")
             return 50.0
         
-        # Hairline ratio: lower ratio = more recession (worse)
-        # Norwood 0 (perfect) = high ratio, Norwood 7 (severe) = low ratio
-        hairline_ratio = hairline_position / forehead_height
+        # Hairline ratio: forehead height relative to face height
+        # Higher ratio = more forehead = potential recession (worse)
+        # But we want to score inversely: lower forehead ratio = better hairline
+        forehead_ratio = forehead_height / face_height
         
-        if np.isnan(hairline_ratio) or np.isinf(hairline_ratio):
-            print(f"⚠️ [NAN/INF] calculate_norwood_stage: Invalid hairline_ratio ({hairline_ratio}), returning 50.0")
+        if np.isnan(forehead_ratio) or np.isinf(forehead_ratio):
+            print(f"⚠️ [NAN/INF] calculate_norwood_stage: Invalid forehead_ratio ({forehead_ratio}), returning 50.0")
             return 50.0
         
-        # Map to Norwood scale: higher ratio = better (lower Norwood stage)
-        # Ideal range: 0.15-0.25 (Norwood 0-1), Receded: 0.10-0.15 (Norwood 2-4), Severe: <0.10 (Norwood 5-7)
-        # Score: higher ratio = better hairline = lower Norwood stage
-        ideal_min, ideal_max = 0.10, 0.25
-        score = score_metric(hairline_ratio, ideal_min, ideal_max)
-        print(f"📊 [CALIBRATION] calculate_norwood_stage: hairline_ratio={hairline_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        # Ideal range: 0.20-0.35 (good hairline), Receded: 0.35-0.45, Severe: >0.45
+        # Score inversely: lower ratio = better hairline
+        # Convert to score where lower is better
+        if forehead_ratio <= 0.35:
+            # Good hairline - score high
+            ideal_min, ideal_max = 0.20, 0.35
+            score = score_metric(forehead_ratio, ideal_min, ideal_max)
+        else:
+            # Receded - score decreases
+            excess = forehead_ratio - 0.35
+            penalty = min(50.0, excess * 100.0)  # Max 50 point penalty
+            score = max(0.0, 100.0 - penalty)
+        
+        print(f"📊 [CALIBRATION] calculate_norwood_stage: forehead_ratio={forehead_ratio:.6f}, ideal_range=[0.20, 0.35], score={score:.2f}")
         return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_norwood_stage: {str(e)}")
@@ -1251,33 +1280,45 @@ def calculate_forehead_projection(landmarks, ipd):
         return 50.0
 
 def calculate_hairline_recession(landmarks):
-    """Calculate hairline recession using hairline position relative to forehead"""
+    """Calculate hairline recession using forehead measurements"""
     try:
-        # Similar to Norwood but focused on recession amount
-        glabella = landmarks[LANDMARKS['glabella']]
+        # Use forehead height as proxy for recession
         nasion = landmarks[LANDMARKS['nasion']]
         forehead_top = landmarks[LANDMARKS['forehead_center']]
         
-        # Measure hairline to forehead distance
-        hairline_to_forehead = euclidean_distance(glabella, forehead_top)
-        nasion_to_forehead = euclidean_distance(nasion, forehead_top)
+        # Measure forehead height
+        forehead_height = euclidean_distance(nasion, forehead_top)
         
-        if nasion_to_forehead <= 0:
-            print(f"⚠️ [VALIDATION FAIL] calculate_hairline_recession: Invalid nasion_to_forehead ({nasion_to_forehead}), returning 50.0")
+        # Get face height for normalization
+        face_height = euclidean_distance(
+            landmarks[LANDMARKS['forehead_center']],
+            landmarks[LANDMARKS['menton']]
+        )
+        
+        if face_height <= 0 or forehead_height <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_hairline_recession: Invalid measurements (forehead_height={forehead_height}, face_height={face_height}), returning 50.0")
             return 50.0
         
-        # Recession ratio: higher = less recession (better)
-        recession_ratio = hairline_to_forehead / nasion_to_forehead
+        # Recession ratio: forehead height relative to face height
+        # Lower ratio = less recession = better
+        recession_ratio = forehead_height / face_height
         
         if np.isnan(recession_ratio) or np.isinf(recession_ratio):
             print(f"⚠️ [NAN/INF] calculate_hairline_recession: Invalid recession_ratio ({recession_ratio}), returning 50.0")
             return 50.0
         
-        # Ideal range: 0.8-1.2 (minimal recession), Receded: 0.5-0.8, Severe: <0.5
-        # Score: higher ratio = less recession = better
-        ideal_min, ideal_max = 0.5, 1.2
-        score = score_metric(recession_ratio, ideal_min, ideal_max)
-        print(f"📊 [CALIBRATION] calculate_hairline_recession: recession_ratio={recession_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        # Ideal range: 0.20-0.35 (minimal recession), Receded: 0.35-0.45, Severe: >0.45
+        # Score inversely: lower ratio = less recession = better
+        if recession_ratio <= 0.35:
+            ideal_min, ideal_max = 0.20, 0.35
+            score = score_metric(recession_ratio, ideal_min, ideal_max)
+        else:
+            # Receded - score decreases
+            excess = recession_ratio - 0.35
+            penalty = min(50.0, excess * 100.0)  # Max 50 point penalty
+            score = max(0.0, 100.0 - penalty)
+        
+        print(f"📊 [CALIBRATION] calculate_hairline_recession: recession_ratio={recession_ratio:.6f}, ideal_range=[0.20, 0.35], score={score:.2f}")
         return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_hairline_recession: {str(e)}")
@@ -1326,8 +1367,8 @@ def calculate_hair_thinning(landmarks):
             print(f"⚠️ [NAN/INF] calculate_hair_thinning: Invalid thinning_ratio ({thinning_ratio}), returning 50.0")
             return 50.0
         
-        # Ideal range: 0.01-0.03 (higher = less thinning = better)
-        ideal_min, ideal_max = 0.01, 0.03
+        # Ideal range: 0.01-0.05 (higher = less thinning = better) - widened range
+        ideal_min, ideal_max = 0.01, 0.05
         score = score_metric(thinning_ratio, ideal_min, ideal_max)
         print(f"📊 [CALIBRATION] calculate_hair_thinning: thinning_ratio={thinning_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
         return score
@@ -1373,8 +1414,8 @@ def calculate_hairline_density(landmarks):
             print(f"⚠️ [NAN/INF] calculate_hairline_density: Invalid density_ratio ({density_ratio}), returning 50.0")
             return 50.0
         
-        # Ideal range: 0.02-0.05 (higher = better density)
-        ideal_min, ideal_max = 0.02, 0.05
+        # Ideal range: 0.02-0.08 (higher = better density) - widened range
+        ideal_min, ideal_max = 0.02, 0.08
         score = score_metric(density_ratio, ideal_min, ideal_max)
         print(f"📊 [CALIBRATION] calculate_hairline_density: density_ratio={density_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
         return score
