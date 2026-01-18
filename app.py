@@ -13,6 +13,7 @@ from io import BytesIO
 from PIL import Image
 import os
 import requests
+import re
 
 # DeepFace for gender detection (97%+ accuracy) - lazy import to avoid blocking startup
 DEEPFACE_AVAILABLE = None  # Will be checked on first use
@@ -578,6 +579,7 @@ def calculate_eyelid_exposure(landmarks, ipd):
         )
         
         if left_eye_width <= 0 or right_eye_width <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_eyelid_exposure: Invalid eye width (left={left_eye_width:.4f}, right={right_eye_width:.4f}), returning 50.0")
             return 50.0
         
         left_aperture = left_eye_height / left_eye_width
@@ -585,16 +587,24 @@ def calculate_eyelid_exposure(landmarks, ipd):
         aperture = (left_aperture + right_aperture) / 2
         
         if np.isnan(aperture) or np.isinf(aperture):
+            print(f"⚠️ [NAN/INF] calculate_eyelid_exposure: Invalid aperture value ({aperture}), returning 50.0")
             return 50.0
         
         # Ideal range: 0.25-0.35
         return score_metric(aperture, 0.25, 0.35)
-    except:
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_eyelid_exposure: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 def calculate_orbital_depth(landmarks, ipd):
     """Calculate orbital depth using 3D z-values"""
     try:
+        if len(landmarks) <= 468:
+            print(f"⚠️ [LANDMARK MISSING] calculate_orbital_depth: landmarks array too short (len={len(landmarks)}), need index 468, returning 50.0")
+            return 50.0
+        
         left_eye_center = landmarks[468]  # Calculated center
         left_brow = landmarks[LANDMARKS['left_brow_inner']]
         left_cheek = landmarks[LANDMARKS['left_cheek']]
@@ -603,30 +613,37 @@ def calculate_orbital_depth(landmarks, ipd):
         depth_norm = normalize_by_ipd(depth, ipd)
         
         if np.isnan(depth_norm) or np.isinf(depth_norm):
+            print(f"⚠️ [NAN/INF] calculate_orbital_depth: Invalid depth_norm ({depth_norm}), returning 50.0")
             return 50.0
         
         # More negative = deeper set (generally more attractive)
         # Ideal range: -0.05 to -0.15
         return score_metric(abs(depth_norm), 0.05, 0.15)
-    except:
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_orbital_depth: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 def calculate_eyebrow_density(landmarks):
     """Proxy for eyebrow density (placeholder - would need CNN in production)"""
     # Return neutral 50 instead of inflated 75
     # TODO: Implement actual eyebrow density calculation
+    print("⚠️ [PLACEHOLDER] calculate_eyebrow_density: Always returning 50.0 (not implemented)")
     return 50.0
 
 def calculate_eyelash_density(landmarks):
     """Proxy for eyelash density (placeholder)"""
     # Return neutral 50 instead of inflated 78
     # TODO: Implement actual eyelash density calculation
+    print("⚠️ [PLACEHOLDER] calculate_eyelash_density: Always returning 50.0 (not implemented)")
     return 50.0
 
 def calculate_under_eye_health(landmarks):
     """Proxy for under-eye health (placeholder - would need CNN)"""
     # Return neutral 50 instead of inflated 80
     # TODO: Implement actual under-eye health calculation
+    print("⚠️ [PLACEHOLDER] calculate_under_eye_health: Always returning 50.0 (not implemented)")
     return 50.0
 
 # ========== MIDFACE METRICS ==========
@@ -641,12 +658,16 @@ def calculate_cheekbones(landmarks, ipd):
         bizygomatic_norm = normalize_by_ipd(bizygomatic_width, ipd)
         
         if np.isnan(bizygomatic_norm) or np.isinf(bizygomatic_norm):
+            print(f"⚠️ [NAN/INF] calculate_cheekbones: Invalid bizygomatic_norm ({bizygomatic_norm}), returning 50.0")
             return 50.0
         
         # Calibrated range based on actual MediaPipe normalized values (typically 3-7)
         # Use wider range to avoid zero scores
         return score_metric(bizygomatic_norm, 3.5, 6.0)
-    except:
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_cheekbones: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 def calculate_maxilla_projection(landmarks, ipd):
@@ -658,12 +679,16 @@ def calculate_maxilla_projection(landmarks, ipd):
         projection_norm = normalize_by_ipd(projection, ipd)
         
         if np.isnan(projection_norm) or np.isinf(projection_norm):
+            print(f"⚠️ [NAN/INF] calculate_maxilla_projection: Invalid projection_norm ({projection_norm}), returning 50.0")
             return 50.0
         
         # Calibrated range - z values normalized by IPD are typically larger
         # Use wider range to avoid zero scores
         return score_metric(projection_norm, 0.5, 3.0)
-    except:
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_maxilla_projection: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 def calculate_nose_metrics(landmarks, ipd):
@@ -678,6 +703,7 @@ def calculate_nose_metrics(landmarks, ipd):
         face_length = euclidean_distance(nasion, chin)
         
         if face_length <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_nose_metrics: Invalid face_length ({face_length}), returning 50.0")
             return 50.0
         
         nose_ratio = nose_length / face_length
@@ -686,6 +712,7 @@ def calculate_nose_metrics(landmarks, ipd):
         nose_proj_norm = normalize_by_ipd(nose_projection, ipd)
         
         if np.isnan(nose_ratio) or np.isnan(nose_proj_norm):
+            print(f"⚠️ [NAN/INF] calculate_nose_metrics: Invalid values (nose_ratio={nose_ratio}, nose_proj_norm={nose_proj_norm}), returning 50.0")
             return 50.0
         
         # Calibrated ranges - nose ratio is reasonable, but projection needs wider range
@@ -693,8 +720,14 @@ def calculate_nose_metrics(landmarks, ipd):
         proj_score = score_metric(nose_proj_norm, 0.3, 2.5)
         
         result = (length_score + proj_score) / 2
-        return result if not (np.isnan(result) or np.isinf(result)) else 50.0
-    except:
+        if np.isnan(result) or np.isinf(result):
+            print(f"⚠️ [NAN/INF] calculate_nose_metrics: Invalid result ({result}), returning 50.0")
+            return 50.0
+        return result
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_nose_metrics: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 def calculate_ipd_score(landmarks):
@@ -707,6 +740,7 @@ def calculate_ipd_score(landmarks):
         )
         
         if face_width <= 0 or np.isnan(face_width):
+            print(f"⚠️ [VALIDATION FAIL] calculate_ipd_score: Invalid face_width ({face_width}), returning 50.0")
             return 50.0
         
         ipd_ratio = ipd / face_width
@@ -714,7 +748,7 @@ def calculate_ipd_score(landmarks):
         print(f"[IPD_SCORE DEBUG] ipd={ipd:.6f}, face_width={face_width:.6f}, ratio={ipd_ratio:.6f}")
         
         if np.isnan(ipd_ratio) or np.isinf(ipd_ratio):
-            print(f"[IPD_SCORE DEBUG] Invalid ratio, returning 50.0")
+            print(f"⚠️ [NAN/INF] calculate_ipd_score: Invalid ipd_ratio ({ipd_ratio}), returning 50.0")
             return 50.0
         
         # Ideal range: 0.25-0.50 (adjusted for actual measurements - wider range)
@@ -726,7 +760,10 @@ def calculate_ipd_score(landmarks):
             print(f"⚠️ WARNING: IPD score is 0.0 - ratio {ipd_ratio:.6f} is far outside ideal range [0.45, 0.50]")
         
         return score
-    except:
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_ipd_score: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 def calculate_fwhr(landmarks):
@@ -742,17 +779,22 @@ def calculate_fwhr(landmarks):
         )
         
         if face_height <= 0 or np.isnan(face_height) or np.isnan(bizygomatic_width):
+            print(f"⚠️ [VALIDATION FAIL] calculate_fwhr: Invalid values (face_height={face_height}, bizygomatic_width={bizygomatic_width}), returning 50.0")
             return 50.0
         
         fwhr = bizygomatic_width / face_height
         
         if np.isnan(fwhr) or np.isinf(fwhr):
+            print(f"⚠️ [NAN/INF] calculate_fwhr: Invalid fwhr ({fwhr}), returning 50.0")
             return 50.0
         
         # Wider range - fWHR typically 1.5-2.5 for normal faces, attractive can be wider
         ideal_min, ideal_max = (1.2, 2.8)  # Even wider range for attractive faces
         return score_metric(fwhr, ideal_min, ideal_max)
-    except:
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_fwhr: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 def calculate_compactness(landmarks):
@@ -768,16 +810,21 @@ def calculate_compactness(landmarks):
         )
         
         if face_width <= 0 or np.isnan(face_width) or np.isnan(face_height):
+            print(f"⚠️ [VALIDATION FAIL] calculate_compactness: Invalid values (face_width={face_width}, face_height={face_height}), returning 50.0")
             return 50.0
         
         compactness = face_height / face_width
         
         if np.isnan(compactness) or np.isinf(compactness):
+            print(f"⚠️ [NAN/INF] calculate_compactness: Invalid compactness ({compactness}), returning 50.0")
             return 50.0
         
         # Wider range - compactness typically 1.0-1.6 for normal faces, attractive can vary
         return score_metric(compactness, 0.9, 1.8)  # Even wider range
-    except:
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_compactness: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 # ========== LOWER THIRD METRICS ==========
@@ -799,6 +846,7 @@ def calculate_lips(landmarks, ipd):
         )
         
         if mouth_width <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_lips: Invalid mouth_width ({mouth_width}), returning 50.0")
             return 50.0
         
         upper_ratio = upper_lip_thickness / mouth_width
@@ -806,11 +854,15 @@ def calculate_lips(landmarks, ipd):
         fullness = (upper_ratio + lower_ratio) / 2
         
         if np.isnan(fullness) or np.isinf(fullness):
+            print(f"⚠️ [NAN/INF] calculate_lips: Invalid fullness ({fullness}), returning 50.0")
             return 50.0
         
         # Ideal range: 0.08-0.12
         return score_metric(fullness, 0.08, 0.12)
-    except:
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_lips: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 def calculate_mandible(landmarks, ipd):
@@ -824,6 +876,7 @@ def calculate_mandible(landmarks, ipd):
         )
         
         if face_height <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_mandible: Invalid face_height ({face_height}), returning 50.0")
             return 50.0
         
         mandible_length = euclidean_distance(gonion_left, chin)
@@ -832,7 +885,7 @@ def calculate_mandible(landmarks, ipd):
         print(f"[MANDIBLE DEBUG] length={mandible_length:.6f}, face_height={face_height:.6f}, ratio={mandible_ratio:.6f}")
         
         if np.isnan(mandible_ratio) or np.isinf(mandible_ratio):
-            print(f"[MANDIBLE DEBUG] Invalid ratio, returning 50.0")
+            print(f"⚠️ [NAN/INF] calculate_mandible: Invalid mandible_ratio ({mandible_ratio}), returning 50.0")
             return 50.0
         
         # Adjusted range - mandible ratio can be higher for strong jawlines
@@ -845,7 +898,10 @@ def calculate_mandible(landmarks, ipd):
             print(f"⚠️ WARNING: Mandible score is 0.0 - ratio {mandible_ratio:.6f} is far outside ideal range [0.30, 0.50]")
         
         return score
-    except:
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_mandible: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 def calculate_gonial_angle(landmarks):
@@ -878,11 +934,15 @@ def calculate_ramus(landmarks, ipd):
         ramus_norm = normalize_by_ipd(ramus_length, ipd)
         
         if np.isnan(ramus_norm) or np.isinf(ramus_norm):
+            print(f"⚠️ [NAN/INF] calculate_ramus: Invalid ramus_norm ({ramus_norm}), returning 50.0")
             return 50.0
         
         # Calibrated range - normalized values are typically larger
         return score_metric(ramus_norm, 1.5, 4.5)
-    except:
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_ramus: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 def calculate_hyoid_skin_tightness(landmarks, ipd):
@@ -897,16 +957,21 @@ def calculate_hyoid_skin_tightness(landmarks, ipd):
         curve = straight * 1.1  # Would need actual hyoid point
         
         if straight <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_hyoid_skin_tightness: Invalid straight distance ({straight}), returning 50.0")
             return 50.0
         
         sag_ratio = curve / straight
         
         if np.isnan(sag_ratio) or np.isinf(sag_ratio):
+            print(f"⚠️ [NAN/INF] calculate_hyoid_skin_tightness: Invalid sag_ratio ({sag_ratio}), returning 50.0")
             return 50.0
         
         # Lower ratio = tighter (better)
         return score_metric(1.0 / sag_ratio, 0.85, 1.0)
-    except:
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_hyoid_skin_tightness: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 def calculate_jaw_width(landmarks, ipd):
@@ -922,16 +987,21 @@ def calculate_jaw_width(landmarks, ipd):
         )
         
         if face_width <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_jaw_width: Invalid face_width ({face_width}), returning 50.0")
             return 50.0
         
         jaw_ratio = jaw_width / face_width
         
         if np.isnan(jaw_ratio) or np.isinf(jaw_ratio):
+            print(f"⚠️ [NAN/INF] calculate_jaw_width: Invalid jaw_ratio ({jaw_ratio}), returning 50.0")
             return 50.0
         
         # Calibrated range - wider to avoid zeros
         return score_metric(jaw_ratio, 0.55, 0.85)
-    except:
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_jaw_width: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 # ========== UPPER THIRD METRICS ==========
@@ -959,6 +1029,7 @@ def calculate_norwood_stage(landmarks):
     """Calculate Norwood stage (hairline recession) - placeholder"""
     # Return neutral 50 instead of inflated 85
     # TODO: Implement actual Norwood stage calculation
+    print("⚠️ [PLACEHOLDER] calculate_norwood_stage: Always returning 50.0 (not implemented)")
     return 50.0
 
 def calculate_forehead_projection(landmarks, ipd):
@@ -969,29 +1040,36 @@ def calculate_forehead_projection(landmarks, ipd):
         projection_norm = normalize_by_ipd(projection, ipd)
         
         if np.isnan(projection_norm) or np.isinf(projection_norm):
+            print(f"⚠️ [NAN/INF] calculate_forehead_projection: Invalid projection_norm ({projection_norm}), returning 50.0")
             return 50.0
         
         # Calibrated range - z values normalized by IPD are typically larger
         return score_metric(projection_norm, 0.3, 2.5)
-    except:
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_forehead_projection: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 def calculate_hairline_recession(landmarks):
     """Calculate hairline recession - placeholder"""
     # Return neutral 50 instead of inflated 82
     # TODO: Implement actual hairline recession calculation
+    print("⚠️ [PLACEHOLDER] calculate_hairline_recession: Always returning 50.0 (not implemented)")
     return 50.0
 
 def calculate_hair_thinning(landmarks):
     """Calculate hair thinning - placeholder"""
     # Return neutral 50 instead of inflated 80
     # TODO: Implement actual hair thinning calculation
+    print("⚠️ [PLACEHOLDER] calculate_hair_thinning: Always returning 50.0 (not implemented)")
     return 50.0
 
 def calculate_hairline_density(landmarks):
     """Calculate hairline density - placeholder"""
     # Return neutral 50 instead of inflated 83
     # TODO: Implement actual hairline density calculation
+    print("⚠️ [PLACEHOLDER] calculate_hairline_density: Always returning 50.0 (not implemented)")
     return 50.0
 
 # ========== MISCELLANEOUS METRICS ==========
@@ -1023,18 +1101,23 @@ def calculate_symmetry(landmarks):
             count += 1
         
         if count == 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_symmetry: No symmetric pairs found, returning 50.0")
             return 50.0
         
         avg_diff = total_diff / count
         
         if np.isnan(avg_diff) or np.isinf(avg_diff):
+            print(f"⚠️ [NAN/INF] calculate_symmetry: Invalid avg_diff ({avg_diff}), returning 50.0")
             return 50.0
         
         # Lower diff = more symmetric (better)
         # Convert to 0-100 score (inverse)
         symmetry_score = 100 * (1 - avg_diff * 2)
         return float(np.clip(symmetry_score, 0, 100))
-    except:
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_symmetry: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 def calculate_neck_width(landmarks, ipd):
@@ -1048,17 +1131,22 @@ def calculate_neck_width(landmarks, ipd):
         neck_norm = normalize_by_ipd(neck_width, ipd)
         
         if np.isnan(neck_norm) or np.isinf(neck_norm):
+            print(f"⚠️ [NAN/INF] calculate_neck_width: Invalid neck_norm ({neck_norm}), returning 50.0")
             return 50.0
         
         # Calibrated range - normalized values are typically larger
         return score_metric(neck_norm, 2.0, 5.0)
-    except:
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_neck_width: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 def calculate_bloat(landmarks):
     """Calculate facial bloat (soft tissue thickness) - placeholder"""
     # Return neutral 50 instead of inflated 78
     # TODO: Implement actual facial bloat calculation
+    print("⚠️ [PLACEHOLDER] calculate_bloat: Always returning 50.0 (not implemented)")
     return 50.0
 
 def calculate_bone_mass(landmarks, ipd):
@@ -1078,17 +1166,22 @@ def calculate_bone_mass(landmarks, ipd):
         bone_mass_norm = normalize_by_ipd(bone_mass, ipd)
         
         if np.isnan(bone_mass_norm) or np.isinf(bone_mass_norm):
+            print(f"⚠️ [NAN/INF] calculate_bone_mass: Invalid bone_mass_norm ({bone_mass_norm}), returning 50.0")
             return 50.0
         
         # Calibrated range - normalized values are typically 3-6
         return score_metric(bone_mass_norm, 3.0, 6.5)
-    except:
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_bone_mass: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 def calculate_skin_quality(landmarks):
     """Calculate skin quality - placeholder (would need CNN)"""
     # Return neutral 50 instead of inflated 84
     # TODO: Implement actual skin quality calculation using CNN
+    print("⚠️ [PLACEHOLDER] calculate_skin_quality: Always returning 50.0 (not implemented)")
     return 50.0
 
 def calculate_harmony(landmarks):
@@ -1130,6 +1223,102 @@ def sanitize_for_json(obj):
         return obj
     else:
         return obj
+
+def calculate_potential_psl(current_psl, eyes_avg, midface_avg, lower_third_avg, upper_third_avg, misc_avg, gender='Male'):
+    """Calculate potential PSL using AI analysis of fixable vs non-fixable features"""
+    # Access FIREWORKS_API_KEY (may be defined later in file, but accessible at runtime)
+    fireworks_key = os.getenv('FIREWORKS_API_KEY')
+    if not fireworks_key:
+        print("⚠️ Fireworks API key not set, using current PSL as potential")
+        return current_psl
+    
+    if current_psl is None or np.isnan(current_psl) or np.isinf(current_psl):
+        return current_psl
+    
+    try:
+        # Build prompt with current metrics
+        prompt = f"""Analyze this person's looksmaxxing potential and determine what PSL they could realistically achieve.
+
+Current PSL: {current_psl:.1f}
+Gender: {gender}
+
+Current Feature Scores (0-100 scale):
+- Eyes: {eyes_avg:.1f}
+- Midface: {midface_avg:.1f}
+- Lower Third (Jaw/Chin): {lower_third_avg:.1f}
+- Upper Third (Hair/Forehead): {upper_third_avg:.1f}
+- Miscellaneous (Skin/Harmony/Symmetry): {misc_avg:.1f}
+
+Consider what PSL could be achieved with proper looksmaxxing improvements:
+- Skincare (acne treatment, clear skin, glow)
+- Grooming (hair styling, beard maintenance, eyebrow shaping)
+- Style (clothing, accessories, presentation)
+- Weight management (if applicable - body fat reduction)
+- Softmaxx improvements (posture, confidence, presentation)
+- Minor hardmaxx (if applicable - but focus on realistic improvements)
+
+IMPORTANT:
+- Consider fixable vs non-fixable features
+- Bone structure (jaw, cheekbones, midface) is mostly non-fixable without surgery
+- Skin, hair, grooming, style, weight are highly fixable
+- Be realistic - don't overestimate potential
+- Output ONLY a single number (PSL 0-8 scale) representing the potential PSL
+- Do NOT include any explanation, just the number
+
+Example outputs: "6.5" or "7.2" or "4.8"
+
+What is the potential PSL this person could achieve with looksmaxxing?"""
+
+        response = requests.post(
+            url="https://api.fireworks.ai/inference/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {fireworks_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "fireworks/llama-v3p3-70b-instruct",
+                "messages": [
+                    {"role": "system", "content": "You are a looksmaxxing expert. Analyze facial features and determine realistic potential PSL scores. Output only numbers."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.3,  # Lower temperature for more consistent numerical outputs
+                "max_tokens": 50
+            },
+            timeout=15
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if 'choices' in data and len(data['choices']) > 0:
+                content = data['choices'][0]['message']['content'].strip()
+                
+                # Extract number from response (handle cases like "6.5" or "The potential is 6.5" or "6.5/8")
+                numbers = re.findall(r'\d+\.?\d*', content)
+                if numbers:
+                    potential_psl = float(numbers[0])
+                    # Ensure it's in valid PSL range (0-8)
+                    potential_psl = max(0.0, min(8.0, potential_psl))
+                    # Ensure potential is at least current PSL (can't go backwards)
+                    potential_psl = max(current_psl, potential_psl)
+                    print(f"✅ AI Potential PSL: {potential_psl:.1f} (from current {current_psl:.1f})")
+                    return potential_psl
+                else:
+                    print(f"⚠️ Could not extract number from AI response: {content}")
+            else:
+                print(f"⚠️ No choices in AI response")
+        else:
+            print(f"⚠️ AI potential calculation failed (Status {response.status_code}): {response.text[:200]}")
+    
+    except requests.exceptions.Timeout:
+        print("⚠️ AI potential calculation timed out")
+    except Exception as e:
+        print(f"⚠️ Error calculating potential PSL: {str(e)}")
+        import traceback
+        traceback.print_exc()
+    
+    # Fallback to current PSL if AI fails
+    print(f"⚠️ Using current PSL as potential fallback: {current_psl:.1f}")
+    return current_psl
 
 def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_image_array=None):
     """Calculate all facial metrics
@@ -1219,9 +1408,17 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
             print(f"\n⚠️  Using geometric PSL fallback: {psl:.1f} (ML models not available)")
             print(f"   This is less accurate - check Railway logs for ML model errors")
         
-        # Potential is same as PSL (no artificial boost)
-        # In the future, you could add a small fixed offset like psl + 5 if desired
-        potential = psl
+        # Calculate potential PSL using AI analysis
+        # This considers fixable vs non-fixable features to determine realistic looksmaxxing potential
+        potential = calculate_potential_psl(
+            current_psl=psl,
+            eyes_avg=eyes_avg,
+            midface_avg=midface_avg,
+            lower_third_avg=lower_third_avg,
+            upper_third_avg=upper_third_avg,
+            misc_avg=misc_avg,
+            gender=gender
+        )
         
         # Ensure no NaN values
         if np.isnan(psl) or np.isinf(psl):
