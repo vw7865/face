@@ -962,8 +962,9 @@ def calculate_compactness(landmarks):
             print(f"⚠️ [NAN/INF] calculate_compactness: Invalid compactness ({compactness}), returning 50.0")
             return 50.0
         
-        # Wider range - compactness typically 1.0-1.6 for normal faces, attractive can vary
-        ideal_min, ideal_max = 0.9, 1.8
+        # Ideal range: 0.85-1.5 (reward lower values more - compact = masculine bonus)
+        # Lower compactness (shorter face relative to width) = more masculine/chiseled
+        ideal_min, ideal_max = 0.85, 1.5
         score = score_metric(compactness, ideal_min, ideal_max)
         print(f"📊 [CALIBRATION] calculate_compactness: compactness={compactness:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
         return score
@@ -1070,11 +1071,33 @@ def calculate_gonial_angle(landmarks):
         if np.isnan(angle) or np.isinf(angle):
             return None  # Return None for null in JSON
         
-        # Ideal range: 112-125° (more acute = more masculine, but 90° is still good for square/strong jaws)
-        # Allow wider range: 105-130° to accommodate square jaws (90°) and sharp angles (up to 130°)
-        ideal_min, ideal_max = 105, 130
-        score = score_metric(angle, ideal_min, ideal_max)
-        print(f"📊 [CALIBRATION] calculate_gonial_angle: angle={angle:.2f}°, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        # Custom scoring: Peak at 120° (score = 100), linear drop to ~70 at edges
+        # Score = 100 at 120° (peak)
+        # Score = 70 at 90° (30° away, 30 point drop = 1 point per degree)
+        # Score = 70 at 105° (15° away, but we want 70, so use different slope)
+        # Score = 70 at 130° (10° away, but we want 70, so use different slope)
+        # Use piecewise linear: 
+        #   - 90-105°: linear from 70 to 85 (15° range, 15 point increase = 1 point/degree)
+        #   - 105-120°: linear from 85 to 100 (15° range, 15 point increase = 1 point/degree)
+        #   - 120-130°: linear from 100 to 70 (10° range, 30 point drop = 3 points/degree)
+        #   - Outside 90-130°: clamp to 70
+        
+        if angle < 90:
+            score = 70.0
+        elif angle <= 105:
+            # 90-105°: linear from 70 to 85
+            score = 70.0 + (angle - 90) * (15.0 / 15.0)  # 1 point per degree
+        elif angle <= 120:
+            # 105-120°: linear from 85 to 100
+            score = 85.0 + (angle - 105) * (15.0 / 15.0)  # 1 point per degree
+        elif angle <= 130:
+            # 120-130°: linear from 100 to 70
+            score = 100.0 - (angle - 120) * (30.0 / 10.0)  # 3 points per degree
+        else:
+            score = 70.0
+        
+        score = float(np.clip(score, 0.0, 100.0))
+        print(f"📊 [CALIBRATION] calculate_gonial_angle: angle={angle:.2f}°, custom_peak_at_120°, score={score:.2f}")
         return score
     except:
         return None
