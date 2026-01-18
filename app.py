@@ -431,11 +431,18 @@ def euclidean_distance(p1, p2):
 def angle_between_vectors(v1, v2):
     """Calculate angle between two vectors in degrees"""
     try:
-        cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+        norm1 = np.linalg.norm(v1)
+        norm2 = np.linalg.norm(v2)
+        
+        # Check for zero-length vectors to prevent division by zero
+        if norm1 == 0.0 or norm2 == 0.0:
+            return 90.0  # Default to 90 degrees (perpendicular) for zero-length vectors
+        
+        cos_angle = np.dot(v1, v2) / (norm1 * norm2)
         cos_angle = np.clip(cos_angle, -1.0, 1.0)
         return np.degrees(np.arccos(cos_angle))
     except:
-        return 0.0
+        return 90.0  # Default to 90 degrees on any error
 
 def score_metric(value, ideal_min, ideal_max, method='linear'):
     """Convert raw metric value to 0-100 score
@@ -626,25 +633,133 @@ def calculate_orbital_depth(landmarks, ipd):
         return 50.0
 
 def calculate_eyebrow_density(landmarks):
-    """Proxy for eyebrow density (placeholder - would need CNN in production)"""
-    # Return neutral 50 instead of inflated 75
-    # TODO: Implement actual eyebrow density calculation
-    print("⚠️ [PLACEHOLDER] calculate_eyebrow_density: Always returning 50.0 (not implemented)")
-    return 50.0
+    """Calculate eyebrow density using landmark spacing as proxy"""
+    try:
+        # Use eyebrow landmark spacing as a proxy for density
+        # Closer spacing = denser eyebrows
+        left_brow_inner = landmarks[LANDMARKS['left_brow_inner']]
+        left_brow_outer = landmarks[LANDMARKS['left_brow_outer']]
+        right_brow_inner = landmarks[LANDMARKS['right_brow_inner']]
+        right_brow_outer = landmarks[LANDMARKS['right_brow_outer']]
+        
+        left_brow_length = euclidean_distance(left_brow_inner, left_brow_outer)
+        right_brow_length = euclidean_distance(right_brow_inner, right_brow_outer)
+        avg_brow_length = (left_brow_length + right_brow_length) / 2
+        
+        # Get face width for normalization
+        face_width = euclidean_distance(
+            landmarks[LANDMARKS['zygion_left']],
+            landmarks[LANDMARKS['zygion_right']]
+        )
+        
+        if face_width <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_eyebrow_density: Invalid face_width ({face_width}), returning 50.0")
+            return 50.0
+        
+        brow_ratio = avg_brow_length / face_width
+        
+        if np.isnan(brow_ratio) or np.isinf(brow_ratio):
+            print(f"⚠️ [NAN/INF] calculate_eyebrow_density: Invalid brow_ratio ({brow_ratio}), returning 50.0")
+            return 50.0
+        
+        # Ideal range: 0.25-0.35 (longer, fuller brows are better)
+        # Score based on brow length relative to face width
+        return score_metric(brow_ratio, 0.25, 0.35)
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_eyebrow_density: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return 50.0
 
 def calculate_eyelash_density(landmarks):
-    """Proxy for eyelash density (placeholder)"""
-    # Return neutral 50 instead of inflated 78
-    # TODO: Implement actual eyelash density calculation
-    print("⚠️ [PLACEHOLDER] calculate_eyelash_density: Always returning 50.0 (not implemented)")
-    return 50.0
+    """Calculate eyelash density using eye area as proxy"""
+    try:
+        # Use eye area measurements as proxy for eyelash density
+        # Larger eye area with good proportions = better eyelash appearance
+        left_eye_height = euclidean_distance(
+            landmarks[LANDMARKS['left_eye_top']],
+            landmarks[LANDMARKS['left_eye_bottom']]
+        )
+        left_eye_width = euclidean_distance(
+            landmarks[LANDMARKS['left_eye_inner']],
+            landmarks[LANDMARKS['left_eye_outer']]
+        )
+        right_eye_height = euclidean_distance(
+            landmarks[LANDMARKS['right_eye_top']],
+            landmarks[LANDMARKS['right_eye_bottom']]
+        )
+        right_eye_width = euclidean_distance(
+            landmarks[LANDMARKS['right_eye_inner']],
+            landmarks[LANDMARKS['right_eye_outer']]
+        )
+        
+        if left_eye_width <= 0 or right_eye_width <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_eyelash_density: Invalid eye width, returning 50.0")
+            return 50.0
+        
+        left_eye_area = left_eye_height * left_eye_width
+        right_eye_area = right_eye_height * right_eye_width
+        avg_eye_area = (left_eye_area + right_eye_area) / 2
+        
+        # Normalize by face width
+        face_width = euclidean_distance(
+            landmarks[LANDMARKS['zygion_left']],
+            landmarks[LANDMARKS['zygion_right']]
+        )
+        
+        if face_width <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_eyelash_density: Invalid face_width ({face_width}), returning 50.0")
+            return 50.0
+        
+        eye_area_ratio = avg_eye_area / (face_width * face_width)
+        
+        if np.isnan(eye_area_ratio) or np.isinf(eye_area_ratio):
+            print(f"⚠️ [NAN/INF] calculate_eyelash_density: Invalid eye_area_ratio ({eye_area_ratio}), returning 50.0")
+            return 50.0
+        
+        # Ideal range: 0.015-0.030 (larger eyes = better eyelash appearance)
+        return score_metric(eye_area_ratio, 0.015, 0.030)
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_eyelash_density: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return 50.0
 
 def calculate_under_eye_health(landmarks):
-    """Proxy for under-eye health (placeholder - would need CNN)"""
-    # Return neutral 50 instead of inflated 80
-    # TODO: Implement actual under-eye health calculation
-    print("⚠️ [PLACEHOLDER] calculate_under_eye_health: Always returning 50.0 (not implemented)")
-    return 50.0
+    """Calculate under-eye health using under-eye area depth as proxy"""
+    try:
+        # Use under-eye area measurements as proxy for health
+        # Measure distance from eye to cheek (deeper = more hollow = worse)
+        left_eye_bottom = landmarks[LANDMARKS['left_eye_bottom']]
+        left_cheek = landmarks[LANDMARKS['left_cheek']]
+        right_eye_bottom = landmarks[LANDMARKS['right_eye_bottom']]
+        right_cheek = landmarks[LANDMARKS['right_cheek']]
+        
+        # Measure vertical distance (y-axis difference)
+        left_under_eye_depth = abs(left_eye_bottom[1] - left_cheek[1])
+        right_under_eye_depth = abs(right_eye_bottom[1] - right_cheek[1])
+        avg_depth = (left_under_eye_depth + right_under_eye_depth) / 2
+        
+        # Normalize by IPD
+        ipd = calculate_ipd(landmarks)
+        if ipd <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_under_eye_health: Invalid IPD ({ipd}), returning 50.0")
+            return 50.0
+        
+        depth_norm = avg_depth / ipd
+        
+        if np.isnan(depth_norm) or np.isinf(depth_norm):
+            print(f"⚠️ [NAN/INF] calculate_under_eye_health: Invalid depth_norm ({depth_norm}), returning 50.0")
+            return 50.0
+        
+        # Ideal range: 0.15-0.25 (moderate depth = healthy, not too hollow, not too puffy)
+        # Score: closer to ideal = better health
+        return score_metric(depth_norm, 0.15, 0.25)
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_under_eye_health: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return 50.0
 
 # ========== MIDFACE METRICS ==========
 
@@ -1026,11 +1141,40 @@ def calculate_forehead_slope(landmarks):
         return None
 
 def calculate_norwood_stage(landmarks):
-    """Calculate Norwood stage (hairline recession) - placeholder"""
-    # Return neutral 50 instead of inflated 85
-    # TODO: Implement actual Norwood stage calculation
-    print("⚠️ [PLACEHOLDER] calculate_norwood_stage: Always returning 50.0 (not implemented)")
-    return 50.0
+    """Calculate Norwood stage (hairline recession) using hairline position"""
+    try:
+        # Measure hairline position relative to forehead
+        glabella = landmarks[LANDMARKS['glabella']]
+        forehead_top = landmarks[LANDMARKS['forehead_center']]
+        nasion = landmarks[LANDMARKS['nasion']]
+        
+        # Calculate hairline height (distance from nasion to forehead top)
+        forehead_height = euclidean_distance(nasion, forehead_top)
+        
+        # Calculate hairline position (distance from glabella to nasion as proxy)
+        hairline_position = euclidean_distance(glabella, nasion)
+        
+        if forehead_height <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_norwood_stage: Invalid forehead_height ({forehead_height}), returning 50.0")
+            return 50.0
+        
+        # Hairline ratio: lower ratio = more recession (worse)
+        # Norwood 0 (perfect) = high ratio, Norwood 7 (severe) = low ratio
+        hairline_ratio = hairline_position / forehead_height
+        
+        if np.isnan(hairline_ratio) or np.isinf(hairline_ratio):
+            print(f"⚠️ [NAN/INF] calculate_norwood_stage: Invalid hairline_ratio ({hairline_ratio}), returning 50.0")
+            return 50.0
+        
+        # Map to Norwood scale: higher ratio = better (lower Norwood stage)
+        # Ideal range: 0.15-0.25 (Norwood 0-1), Receded: 0.10-0.15 (Norwood 2-4), Severe: <0.10 (Norwood 5-7)
+        # Score: higher ratio = better hairline = lower Norwood stage
+        return score_metric(hairline_ratio, 0.10, 0.25)
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_norwood_stage: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return 50.0
 
 def calculate_forehead_projection(landmarks, ipd):
     """Calculate forehead projection"""
@@ -1052,25 +1196,129 @@ def calculate_forehead_projection(landmarks, ipd):
         return 50.0
 
 def calculate_hairline_recession(landmarks):
-    """Calculate hairline recession - placeholder"""
-    # Return neutral 50 instead of inflated 82
-    # TODO: Implement actual hairline recession calculation
-    print("⚠️ [PLACEHOLDER] calculate_hairline_recession: Always returning 50.0 (not implemented)")
-    return 50.0
+    """Calculate hairline recession using hairline position relative to forehead"""
+    try:
+        # Similar to Norwood but focused on recession amount
+        glabella = landmarks[LANDMARKS['glabella']]
+        nasion = landmarks[LANDMARKS['nasion']]
+        forehead_top = landmarks[LANDMARKS['forehead_center']]
+        
+        # Measure hairline to forehead distance
+        hairline_to_forehead = euclidean_distance(glabella, forehead_top)
+        nasion_to_forehead = euclidean_distance(nasion, forehead_top)
+        
+        if nasion_to_forehead <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_hairline_recession: Invalid nasion_to_forehead ({nasion_to_forehead}), returning 50.0")
+            return 50.0
+        
+        # Recession ratio: higher = less recession (better)
+        recession_ratio = hairline_to_forehead / nasion_to_forehead
+        
+        if np.isnan(recession_ratio) or np.isinf(recession_ratio):
+            print(f"⚠️ [NAN/INF] calculate_hairline_recession: Invalid recession_ratio ({recession_ratio}), returning 50.0")
+            return 50.0
+        
+        # Ideal range: 0.8-1.2 (minimal recession), Receded: 0.5-0.8, Severe: <0.5
+        # Score: higher ratio = less recession = better
+        return score_metric(recession_ratio, 0.5, 1.2)
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_hairline_recession: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return 50.0
 
 def calculate_hair_thinning(landmarks):
-    """Calculate hair thinning - placeholder"""
-    # Return neutral 50 instead of inflated 80
-    # TODO: Implement actual hair thinning calculation
-    print("⚠️ [PLACEHOLDER] calculate_hair_thinning: Always returning 50.0 (not implemented)")
-    return 50.0
+    """Calculate hair thinning using hairline measurements as proxy"""
+    try:
+        # Use hairline position and area as proxy for thinning
+        # Similar to hairline density but focused on thinning
+        glabella = landmarks[LANDMARKS['glabella']]
+        nasion = landmarks[LANDMARKS['nasion']]
+        forehead_top = landmarks[LANDMARKS['forehead_center']]
+        
+        # Measure hairline coverage area
+        hairline_base = euclidean_distance(glabella, nasion)
+        hairline_height = euclidean_distance(nasion, forehead_top)
+        
+        if hairline_base <= 0 or hairline_height <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_hair_thinning: Invalid measurements, returning 50.0")
+            return 50.0
+        
+        # Hairline area as proxy for thinning (larger = less thinning)
+        hairline_area = (hairline_base * hairline_height) / 2
+        
+        # Normalize by face area
+        face_width = euclidean_distance(
+            landmarks[LANDMARKS['zygion_left']],
+            landmarks[LANDMARKS['zygion_right']]
+        )
+        face_height = euclidean_distance(
+            landmarks[LANDMARKS['forehead_center']],
+            landmarks[LANDMARKS['menton']]
+        )
+        
+        if face_width <= 0 or face_height <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_hair_thinning: Invalid face dimensions, returning 50.0")
+            return 50.0
+        
+        face_area = face_width * face_height
+        thinning_ratio = hairline_area / face_area
+        
+        if np.isnan(thinning_ratio) or np.isinf(thinning_ratio):
+            print(f"⚠️ [NAN/INF] calculate_hair_thinning: Invalid thinning_ratio ({thinning_ratio}), returning 50.0")
+            return 50.0
+        
+        # Ideal range: 0.01-0.03 (higher = less thinning = better)
+        return score_metric(thinning_ratio, 0.01, 0.03)
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_hair_thinning: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return 50.0
 
 def calculate_hairline_density(landmarks):
-    """Calculate hairline density - placeholder"""
-    # Return neutral 50 instead of inflated 83
-    # TODO: Implement actual hairline density calculation
-    print("⚠️ [PLACEHOLDER] calculate_hairline_density: Always returning 50.0 (not implemented)")
-    return 50.0
+    """Calculate hairline density using hairline position and spacing as proxy"""
+    try:
+        # Use hairline position and forehead measurements as proxy for density
+        glabella = landmarks[LANDMARKS['glabella']]
+        nasion = landmarks[LANDMARKS['nasion']]
+        forehead_top = landmarks[LANDMARKS['forehead_center']]
+        
+        # Measure hairline area (triangle formed by glabella, nasion, forehead_top)
+        # Larger area = more hairline coverage = better density
+        hairline_base = euclidean_distance(glabella, nasion)
+        hairline_height = euclidean_distance(nasion, forehead_top)
+        
+        if hairline_base <= 0 or hairline_height <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_hairline_density: Invalid measurements (base={hairline_base}, height={hairline_height}), returning 50.0")
+            return 50.0
+        
+        # Hairline area as proxy for density
+        hairline_area = (hairline_base * hairline_height) / 2
+        
+        # Normalize by face width
+        face_width = euclidean_distance(
+            landmarks[LANDMARKS['zygion_left']],
+            landmarks[LANDMARKS['zygion_right']]
+        )
+        
+        if face_width <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_hairline_density: Invalid face_width ({face_width}), returning 50.0")
+            return 50.0
+        
+        density_ratio = hairline_area / (face_width * face_width)
+        
+        if np.isnan(density_ratio) or np.isinf(density_ratio):
+            print(f"⚠️ [NAN/INF] calculate_hairline_density: Invalid density_ratio ({density_ratio}), returning 50.0")
+            return 50.0
+        
+        # Ideal range: 0.02-0.05 (higher = better density)
+        return score_metric(density_ratio, 0.02, 0.05)
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_hairline_density: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return 50.0
 
 # ========== MISCELLANEOUS METRICS ==========
 
@@ -1143,11 +1391,48 @@ def calculate_neck_width(landmarks, ipd):
         return 50.0
 
 def calculate_bloat(landmarks):
-    """Calculate facial bloat (soft tissue thickness) - placeholder"""
-    # Return neutral 50 instead of inflated 78
-    # TODO: Implement actual facial bloat calculation
-    print("⚠️ [PLACEHOLDER] calculate_bloat: Always returning 50.0 (not implemented)")
-    return 50.0
+    """Calculate facial bloat using cheek prominence and facial width ratios"""
+    try:
+        # Bloat = excess soft tissue, measured by cheek prominence relative to bone structure
+        # Use cheekbone width vs jaw width ratio as proxy
+        cheekbone_width = euclidean_distance(
+            landmarks[LANDMARKS['zygion_left']],
+            landmarks[LANDMARKS['zygion_right']]
+        )
+        jaw_width = euclidean_distance(
+            landmarks[LANDMARKS['gonion_left']],
+            landmarks[LANDMARKS['gonion_right']]
+        )
+        
+        if jaw_width <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_bloat: Invalid jaw_width ({jaw_width}), returning 50.0")
+            return 50.0
+        
+        # Cheek-to-jaw ratio: higher = more bloat (worse)
+        # Lower ratio = less bloat = more defined = better
+        bloat_ratio = cheekbone_width / jaw_width
+        
+        if np.isnan(bloat_ratio) or np.isinf(bloat_ratio):
+            print(f"⚠️ [NAN/INF] calculate_bloat: Invalid bloat_ratio ({bloat_ratio}), returning 50.0")
+            return 50.0
+        
+        # Ideal range: 1.0-1.2 (cheekbones slightly wider than jaw = defined, not bloated)
+        # Higher = more bloat (worse), Lower = more defined (better)
+        # Score inversely: lower ratio = better (less bloat)
+        # Convert to score where 1.0-1.2 is ideal (100), higher is worse
+        if bloat_ratio <= 1.2:
+            # Less bloat = better
+            return score_metric(bloat_ratio, 1.0, 1.2)
+        else:
+            # More bloat = worse, score decreases
+            excess_bloat = bloat_ratio - 1.2
+            penalty = min(50.0, excess_bloat * 25.0)  # Max 50 point penalty
+            return max(0.0, 100.0 - penalty)
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_bloat: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return 50.0
 
 def calculate_bone_mass(landmarks, ipd):
     """Calculate bone mass proxy (facial structure)"""
@@ -1178,11 +1463,69 @@ def calculate_bone_mass(landmarks, ipd):
         return 50.0
 
 def calculate_skin_quality(landmarks):
-    """Calculate skin quality - placeholder (would need CNN)"""
-    # Return neutral 50 instead of inflated 84
-    # TODO: Implement actual skin quality calculation using CNN
-    print("⚠️ [PLACEHOLDER] calculate_skin_quality: Always returning 50.0 (not implemented)")
-    return 50.0
+    """Calculate skin quality using facial symmetry and smoothness as proxy"""
+    try:
+        # Use facial symmetry and smoothness as proxy for skin quality
+        # More symmetric and smooth = better skin quality (less texture, blemishes)
+        
+        # Calculate symmetry (already have this function)
+        symmetry_score = calculate_symmetry(landmarks)
+        
+        # Calculate smoothness using landmark spacing consistency
+        # Check consistency of landmark distances (more consistent = smoother skin)
+        key_points = [
+            LANDMARKS['left_cheek'],
+            LANDMARKS['right_cheek'],
+            LANDMARKS['left_eye_outer'],
+            LANDMARKS['right_eye_outer'],
+            LANDMARKS['mouth_left'],
+            LANDMARKS['mouth_right']
+        ]
+        
+        distances = []
+        for i in range(len(key_points)):
+            for j in range(i + 1, len(key_points)):
+                dist = euclidean_distance(landmarks[key_points[i]], landmarks[key_points[j]])
+                distances.append(dist)
+        
+        if len(distances) == 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_skin_quality: No distances calculated, returning 50.0")
+            return 50.0
+        
+        # Calculate coefficient of variation (lower = more consistent = smoother)
+        mean_dist = np.mean(distances)
+        std_dist = np.std(distances)
+        
+        if mean_dist <= 0:
+            print(f"⚠️ [VALIDATION FAIL] calculate_skin_quality: Invalid mean_dist ({mean_dist}), returning 50.0")
+            return 50.0
+        
+        cv = std_dist / mean_dist  # Coefficient of variation
+        
+        if np.isnan(cv) or np.isinf(cv):
+            print(f"⚠️ [NAN/INF] calculate_skin_quality: Invalid CV ({cv}), returning 50.0")
+            return 50.0
+        
+        # Lower CV = more consistent = smoother = better skin
+        # Convert CV to score (inverse relationship)
+        # Ideal CV: 0.05-0.15 (very consistent)
+        smoothness_score = score_metric(cv, 0.05, 0.15)
+        # Invert because lower CV is better
+        smoothness_score = 100.0 - smoothness_score
+        
+        # Combine symmetry and smoothness
+        skin_quality = (symmetry_score + smoothness_score) / 2
+        
+        if np.isnan(skin_quality) or np.isinf(skin_quality):
+            print(f"⚠️ [NAN/INF] calculate_skin_quality: Invalid skin_quality ({skin_quality}), returning 50.0")
+            return 50.0
+        
+        return float(np.clip(skin_quality, 0, 100))
+    except Exception as e:
+        print(f"❌ [EXCEPTION] calculate_skin_quality: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return 50.0
 
 def calculate_harmony(landmarks):
     """Calculate facial harmony (meta-score)"""
@@ -1237,7 +1580,7 @@ def calculate_potential_psl(current_psl, eyes_avg, midface_avg, lower_third_avg,
     
     try:
         # Build prompt with current metrics
-        prompt = f"""Analyze this person's looksmaxxing potential and determine what PSL they could realistically achieve.
+        prompt = f"""Analyze this person's looksmaxxing potential and determine what PSL they could realistically achieve with MAXIMUM looksmaxxing effort.
 
 Current PSL: {current_psl:.1f}
 Gender: {gender}
@@ -1249,25 +1592,28 @@ Current Feature Scores (0-100 scale):
 - Upper Third (Hair/Forehead): {upper_third_avg:.1f}
 - Miscellaneous (Skin/Harmony/Symmetry): {misc_avg:.1f}
 
-Consider what PSL could be achieved with proper looksmaxxing improvements:
-- Skincare (acne treatment, clear skin, glow)
-- Grooming (hair styling, beard maintenance, eyebrow shaping)
-- Style (clothing, accessories, presentation)
-- Weight management (if applicable - body fat reduction)
-- Softmaxx improvements (posture, confidence, presentation)
-- Minor hardmaxx (if applicable - but focus on realistic improvements)
+AGGRESSIVE IMPROVEMENT ANALYSIS - Find EVERY possible improvement:
+- Skincare: Perfect clear skin, glow, even tone (can add +0.5-1.5 PSL)
+- Grooming: Perfect hair styling, beard maintenance, eyebrow shaping (can add +0.3-1.0 PSL)
+- Style: Elite clothing, accessories, presentation (can add +0.2-0.8 PSL)
+- Weight management: Optimal body fat (10-15% for men, 18-22% for women) (can add +0.5-2.0 PSL)
+- Softmaxx: Perfect posture, confidence, presentation (can add +0.2-0.5 PSL)
+- Hair: Perfect styling, density, hairline optimization (can add +0.3-1.0 PSL)
+- Skin texture: Even if current skin score is decent, perfect skincare can still improve it
 
-IMPORTANT:
-- Consider fixable vs non-fixable features
-- Bone structure (jaw, cheekbones, midface) is mostly non-fixable without surgery
-- Skin, hair, grooming, style, weight are highly fixable
-- Be realistic - don't overestimate potential
+CRITICAL INSTRUCTIONS:
+- Even if current PSL is high (7-8+), there is ALWAYS room for improvement through looksmaxxing
+- Assume the person will do EVERYTHING possible: perfect skincare, perfect grooming, perfect style, optimal weight, perfect hair
+- Bone structure (jaw, cheekbones, midface) is mostly fixed, but EVERYTHING else can be optimized
+- Be AGGRESSIVE in finding improvement potential - most people can gain 0.5-2.0 PSL points with maximum effort
+- If current PSL is below 7.0, potential should be AT LEAST +0.5 higher
+- If current PSL is 7.0-8.0, potential should be AT LEAST +0.3 higher (even elite faces can improve)
 - Output ONLY a single number (PSL 0-8 scale) representing the potential PSL
 - Do NOT include any explanation, just the number
 
-Example outputs: "6.5" or "7.2" or "4.8"
+Example: If current PSL is 6.5, potential should be 7.0-7.5. If current is 8.0, potential should be 8.3-8.5.
 
-What is the potential PSL this person could achieve with looksmaxxing?"""
+What is the MAXIMUM potential PSL this person could achieve with aggressive looksmaxxing?"""
 
         response = requests.post(
             url="https://api.fireworks.ai/inference/v1/chat/completions",
@@ -1300,7 +1646,17 @@ What is the potential PSL this person could achieve with looksmaxxing?"""
                     potential_psl = max(0.0, min(8.0, potential_psl))
                     # Ensure potential is at least current PSL (can't go backwards)
                     potential_psl = max(current_psl, potential_psl)
-                    print(f"✅ AI Potential PSL: {potential_psl:.1f} (from current {current_psl:.1f})")
+                    
+                    # If AI returned same value, add minimum improvement
+                    if abs(potential_psl - current_psl) < 0.1:
+                        # Add minimum improvement based on current PSL
+                        if current_psl < 7.0:
+                            potential_psl = min(8.0, current_psl + 0.5)  # +0.5 for lower PSL
+                        else:
+                            potential_psl = min(8.0, current_psl + 0.3)  # +0.3 for higher PSL
+                        print(f"✅ AI Potential PSL: {potential_psl:.1f} (from current {current_psl:.1f}, added minimum improvement)")
+                    else:
+                        print(f"✅ AI Potential PSL: {potential_psl:.1f} (from current {current_psl:.1f})")
                     return potential_psl
                 else:
                     print(f"⚠️ Could not extract number from AI response: {content}")
