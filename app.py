@@ -546,12 +546,9 @@ def calculate_canthal_tilt(landmarks, gender='Male'):
         ideal_min, ideal_max = (-10, 15) if gender == 'Male' else (-8, 18)
         score = score_metric(tilt, ideal_min, ideal_max)
         
-        # Debug: Log the scoring process
-        print(f"[TILT DEBUG] tilt={tilt:.2f}°, ideal_range=[{ideal_min}, {ideal_max}], raw_score={score:.2f}")
-        
         # No extra custom min clamp - let scores reflect actual geometry
         final_score = float(np.clip(score, 0.0, 100.0))
-        print(f"[TILT DEBUG] FINAL tilt={tilt:.2f}°, score={final_score:.1f}")
+        print(f"📊 [CALIBRATION] calculate_canthal_tilt: tilt={tilt:.2f}°, ideal_range=[{ideal_min}, {ideal_max}], score={final_score:.2f}")
         
         # If score is 0, warn about it
         if final_score == 0.0:
@@ -598,7 +595,10 @@ def calculate_eyelid_exposure(landmarks, ipd):
             return 50.0
         
         # Ideal range: 0.25-0.35
-        return score_metric(aperture, 0.25, 0.35)
+        ideal_min, ideal_max = 0.25, 0.35
+        score = score_metric(aperture, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_eyelid_exposure: aperture={aperture:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_eyelid_exposure: {str(e)}")
         import traceback
@@ -625,7 +625,10 @@ def calculate_orbital_depth(landmarks, ipd):
         
         # More negative = deeper set (generally more attractive)
         # Ideal range: -0.05 to -0.15
-        return score_metric(abs(depth_norm), 0.05, 0.15)
+        ideal_min, ideal_max = 0.05, 0.15
+        score = score_metric(abs(depth_norm), ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_orbital_depth: depth_norm={depth_norm:.6f}, abs={abs(depth_norm):.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_orbital_depth: {str(e)}")
         import traceback
@@ -664,7 +667,10 @@ def calculate_eyebrow_density(landmarks):
         
         # Ideal range: 0.25-0.35 (longer, fuller brows are better)
         # Score based on brow length relative to face width
-        return score_metric(brow_ratio, 0.25, 0.35)
+        ideal_min, ideal_max = 0.25, 0.35
+        score = score_metric(brow_ratio, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_eyebrow_density: brow_ratio={brow_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_eyebrow_density: {str(e)}")
         import traceback
@@ -718,7 +724,10 @@ def calculate_eyelash_density(landmarks):
             return 50.0
         
         # Ideal range: 0.015-0.030 (larger eyes = better eyelash appearance)
-        return score_metric(eye_area_ratio, 0.015, 0.030)
+        ideal_min, ideal_max = 0.015, 0.030
+        score = score_metric(eye_area_ratio, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_eyelash_density: eye_area_ratio={eye_area_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_eyelash_density: {str(e)}")
         import traceback
@@ -754,7 +763,10 @@ def calculate_under_eye_health(landmarks):
         
         # Ideal range: 0.15-0.25 (moderate depth = healthy, not too hollow, not too puffy)
         # Score: closer to ideal = better health
-        return score_metric(depth_norm, 0.15, 0.25)
+        ideal_min, ideal_max = 0.15, 0.25
+        score = score_metric(depth_norm, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_under_eye_health: depth_norm={depth_norm:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_under_eye_health: {str(e)}")
         import traceback
@@ -778,7 +790,10 @@ def calculate_cheekbones(landmarks, ipd):
         
         # Calibrated range based on actual MediaPipe normalized values (typically 3-7)
         # Use wider range to avoid zero scores
-        return score_metric(bizygomatic_norm, 3.5, 6.0)
+        ideal_min, ideal_max = 3.5, 6.0
+        score = score_metric(bizygomatic_norm, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_cheekbones: bizygomatic_norm={bizygomatic_norm:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_cheekbones: {str(e)}")
         import traceback
@@ -799,7 +814,10 @@ def calculate_maxilla_projection(landmarks, ipd):
         
         # Calibrated range - z values normalized by IPD are typically larger
         # Use wider range to avoid zero scores
-        return score_metric(projection_norm, 0.5, 3.0)
+        ideal_min, ideal_max = 0.5, 3.0
+        score = score_metric(projection_norm, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_maxilla_projection: projection_norm={projection_norm:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_maxilla_projection: {str(e)}")
         import traceback
@@ -831,8 +849,12 @@ def calculate_nose_metrics(landmarks, ipd):
             return 50.0
         
         # Calibrated ranges - nose ratio is reasonable, but projection needs wider range
-        length_score = score_metric(nose_ratio, 0.25, 0.40)
-        proj_score = score_metric(nose_proj_norm, 0.3, 2.5)
+        length_ideal_min, length_ideal_max = 0.25, 0.40
+        proj_ideal_min, proj_ideal_max = 0.3, 2.5
+        length_score = score_metric(nose_ratio, length_ideal_min, length_ideal_max)
+        proj_score = score_metric(nose_proj_norm, proj_ideal_min, proj_ideal_max)
+        print(f"📊 [CALIBRATION] calculate_nose_metrics: nose_ratio={nose_ratio:.6f}, ideal_range=[{length_ideal_min}, {length_ideal_max}], length_score={length_score:.2f}")
+        print(f"📊 [CALIBRATION] calculate_nose_metrics: nose_proj_norm={nose_proj_norm:.6f}, ideal_range=[{proj_ideal_min}, {proj_ideal_max}], proj_score={proj_score:.2f}")
         
         result = (length_score + proj_score) / 2
         if np.isnan(result) or np.isinf(result):
@@ -868,8 +890,9 @@ def calculate_ipd_score(landmarks):
         
         # Ideal range: 0.25-0.50 (adjusted for actual measurements - wider range)
         # Typical IPD/face_width ratio is 0.30-0.45 for attractive faces
-        score = score_metric(ipd_ratio, 0.25, 0.50)
-        print(f"[IPD_SCORE DEBUG] ratio={ipd_ratio:.6f}, ideal=[0.25, 0.50], score={score:.2f}")
+        ideal_min, ideal_max = 0.25, 0.50
+        score = score_metric(ipd_ratio, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_ipd_score: ipd_ratio={ipd_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
         
         if score == 0.0:
             print(f"⚠️ WARNING: IPD score is 0.0 - ratio {ipd_ratio:.6f} is far outside ideal range [0.45, 0.50]")
@@ -905,7 +928,9 @@ def calculate_fwhr(landmarks):
         
         # Wider range - fWHR typically 1.5-2.5 for normal faces, attractive can be wider
         ideal_min, ideal_max = (1.2, 2.8)  # Even wider range for attractive faces
-        return score_metric(fwhr, ideal_min, ideal_max)
+        score = score_metric(fwhr, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_fwhr: fwhr={fwhr:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_fwhr: {str(e)}")
         import traceback
@@ -935,7 +960,10 @@ def calculate_compactness(landmarks):
             return 50.0
         
         # Wider range - compactness typically 1.0-1.6 for normal faces, attractive can vary
-        return score_metric(compactness, 0.9, 1.8)  # Even wider range
+        ideal_min, ideal_max = 0.9, 1.8
+        score = score_metric(compactness, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_compactness: compactness={compactness:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_compactness: {str(e)}")
         import traceback
@@ -973,7 +1001,10 @@ def calculate_lips(landmarks, ipd):
             return 50.0
         
         # Ideal range: 0.08-0.12
-        return score_metric(fullness, 0.08, 0.12)
+        ideal_min, ideal_max = 0.08, 0.12
+        score = score_metric(fullness, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_lips: fullness={fullness:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_lips: {str(e)}")
         import traceback
@@ -1006,8 +1037,9 @@ def calculate_mandible(landmarks, ipd):
         # Adjusted range - mandible ratio can be higher for strong jawlines
         # For attractive faces with strong mandibles, ratio can be 0.50-0.85
         # Center ideal around 0.60-0.70 for strong jaws
-        score = score_metric(mandible_ratio, 0.40, 0.85)
-        print(f"[MANDIBLE DEBUG] ratio={mandible_ratio:.6f}, ideal=[0.40, 0.85], score={score:.2f}")
+        ideal_min, ideal_max = 0.40, 0.85
+        score = score_metric(mandible_ratio, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_mandible: mandible_ratio={mandible_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
         
         if score == 0.0:
             print(f"⚠️ WARNING: Mandible score is 0.0 - ratio {mandible_ratio:.6f} is far outside ideal range [0.30, 0.50]")
@@ -1035,7 +1067,10 @@ def calculate_gonial_angle(landmarks):
             return None  # Return None for null in JSON
         
         # Ideal range: 115-125° (more acute = more masculine)
-        return score_metric(angle, 115, 125)
+        ideal_min, ideal_max = 115, 125
+        score = score_metric(angle, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_gonial_angle: angle={angle:.2f}°, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except:
         return None
 
@@ -1053,7 +1088,10 @@ def calculate_ramus(landmarks, ipd):
             return 50.0
         
         # Calibrated range - normalized values are typically larger
-        return score_metric(ramus_norm, 1.5, 4.5)
+        ideal_min, ideal_max = 1.5, 4.5
+        score = score_metric(ramus_norm, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_ramus: ramus_norm={ramus_norm:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_ramus: {str(e)}")
         import traceback
@@ -1082,7 +1120,11 @@ def calculate_hyoid_skin_tightness(landmarks, ipd):
             return 50.0
         
         # Lower ratio = tighter (better)
-        return score_metric(1.0 / sag_ratio, 0.85, 1.0)
+        tightness_ratio = 1.0 / sag_ratio
+        ideal_min, ideal_max = 0.85, 1.0
+        score = score_metric(tightness_ratio, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_hyoid_skin_tightness: sag_ratio={sag_ratio:.6f}, tightness_ratio={tightness_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_hyoid_skin_tightness: {str(e)}")
         import traceback
@@ -1112,7 +1154,10 @@ def calculate_jaw_width(landmarks, ipd):
             return 50.0
         
         # Calibrated range - wider to avoid zeros
-        return score_metric(jaw_ratio, 0.55, 0.85)
+        ideal_min, ideal_max = 0.55, 0.85
+        score = score_metric(jaw_ratio, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_jaw_width: jaw_ratio={jaw_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_jaw_width: {str(e)}")
         import traceback
@@ -1136,7 +1181,11 @@ def calculate_forehead_slope(landmarks):
             return None
         
         # Ideal range: 5-15° (slight backward slope)
-        return score_metric(abs(slope), 5, 15)
+        ideal_min, ideal_max = 5, 15
+        slope_abs = abs(slope)
+        score = score_metric(slope_abs, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_forehead_slope: slope={slope:.2f}°, abs={slope_abs:.2f}°, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except:
         return None
 
@@ -1169,7 +1218,10 @@ def calculate_norwood_stage(landmarks):
         # Map to Norwood scale: higher ratio = better (lower Norwood stage)
         # Ideal range: 0.15-0.25 (Norwood 0-1), Receded: 0.10-0.15 (Norwood 2-4), Severe: <0.10 (Norwood 5-7)
         # Score: higher ratio = better hairline = lower Norwood stage
-        return score_metric(hairline_ratio, 0.10, 0.25)
+        ideal_min, ideal_max = 0.10, 0.25
+        score = score_metric(hairline_ratio, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_norwood_stage: hairline_ratio={hairline_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_norwood_stage: {str(e)}")
         import traceback
@@ -1188,7 +1240,10 @@ def calculate_forehead_projection(landmarks, ipd):
             return 50.0
         
         # Calibrated range - z values normalized by IPD are typically larger
-        return score_metric(projection_norm, 0.3, 2.5)
+        ideal_min, ideal_max = 0.3, 2.5
+        score = score_metric(projection_norm, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_forehead_projection: projection_norm={projection_norm:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_forehead_projection: {str(e)}")
         import traceback
@@ -1220,7 +1275,10 @@ def calculate_hairline_recession(landmarks):
         
         # Ideal range: 0.8-1.2 (minimal recession), Receded: 0.5-0.8, Severe: <0.5
         # Score: higher ratio = less recession = better
-        return score_metric(recession_ratio, 0.5, 1.2)
+        ideal_min, ideal_max = 0.5, 1.2
+        score = score_metric(recession_ratio, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_hairline_recession: recession_ratio={recession_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_hairline_recession: {str(e)}")
         import traceback
@@ -1269,7 +1327,10 @@ def calculate_hair_thinning(landmarks):
             return 50.0
         
         # Ideal range: 0.01-0.03 (higher = less thinning = better)
-        return score_metric(thinning_ratio, 0.01, 0.03)
+        ideal_min, ideal_max = 0.01, 0.03
+        score = score_metric(thinning_ratio, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_hair_thinning: thinning_ratio={thinning_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_hair_thinning: {str(e)}")
         import traceback
@@ -1313,7 +1374,10 @@ def calculate_hairline_density(landmarks):
             return 50.0
         
         # Ideal range: 0.02-0.05 (higher = better density)
-        return score_metric(density_ratio, 0.02, 0.05)
+        ideal_min, ideal_max = 0.02, 0.05
+        score = score_metric(density_ratio, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_hairline_density: density_ratio={density_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_hairline_density: {str(e)}")
         import traceback
@@ -1361,7 +1425,9 @@ def calculate_symmetry(landmarks):
         # Lower diff = more symmetric (better)
         # Convert to 0-100 score (inverse)
         symmetry_score = 100 * (1 - avg_diff * 2)
-        return float(np.clip(symmetry_score, 0, 100))
+        final_score = float(np.clip(symmetry_score, 0, 100))
+        print(f"📊 [CALIBRATION] calculate_symmetry: avg_diff={avg_diff:.6f}, symmetry_score={symmetry_score:.2f}, final_score={final_score:.2f}")
+        return final_score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_symmetry: {str(e)}")
         import traceback
@@ -1383,7 +1449,10 @@ def calculate_neck_width(landmarks, ipd):
             return 50.0
         
         # Calibrated range - normalized values are typically larger
-        return score_metric(neck_norm, 2.0, 5.0)
+        ideal_min, ideal_max = 2.0, 5.0
+        score = score_metric(neck_norm, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_neck_width: neck_norm={neck_norm:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_neck_width: {str(e)}")
         import traceback
@@ -1420,14 +1489,17 @@ def calculate_bloat(landmarks):
         # Higher = more bloat (worse), Lower = more defined (better)
         # Score inversely: lower ratio = better (less bloat)
         # Convert to score where 1.0-1.2 is ideal (100), higher is worse
+        ideal_min, ideal_max = 1.0, 1.2
         if bloat_ratio <= 1.2:
             # Less bloat = better
-            return score_metric(bloat_ratio, 1.0, 1.2)
+            score = score_metric(bloat_ratio, ideal_min, ideal_max)
         else:
             # More bloat = worse, score decreases
             excess_bloat = bloat_ratio - 1.2
             penalty = min(50.0, excess_bloat * 25.0)  # Max 50 point penalty
-            return max(0.0, 100.0 - penalty)
+            score = max(0.0, 100.0 - penalty)
+        print(f"📊 [CALIBRATION] calculate_bloat: bloat_ratio={bloat_ratio:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_bloat: {str(e)}")
         import traceback
@@ -1455,7 +1527,10 @@ def calculate_bone_mass(landmarks, ipd):
             return 50.0
         
         # Calibrated range - normalized values are typically 3-6
-        return score_metric(bone_mass_norm, 3.0, 6.5)
+        ideal_min, ideal_max = 3.0, 6.5
+        score = score_metric(bone_mass_norm, ideal_min, ideal_max)
+        print(f"📊 [CALIBRATION] calculate_bone_mass: bone_mass_norm={bone_mass_norm:.6f}, ideal_range=[{ideal_min}, {ideal_max}], score={score:.2f}")
+        return score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_bone_mass: {str(e)}")
         import traceback
@@ -1509,9 +1584,10 @@ def calculate_skin_quality(landmarks):
         # Lower CV = more consistent = smoother = better skin
         # Convert CV to score (inverse relationship)
         # Ideal CV: 0.05-0.15 (very consistent)
-        smoothness_score = score_metric(cv, 0.05, 0.15)
+        cv_ideal_min, cv_ideal_max = 0.05, 0.15
+        smoothness_score_raw = score_metric(cv, cv_ideal_min, cv_ideal_max)
         # Invert because lower CV is better
-        smoothness_score = 100.0 - smoothness_score
+        smoothness_score = 100.0 - smoothness_score_raw
         
         # Combine symmetry and smoothness
         skin_quality = (symmetry_score + smoothness_score) / 2
@@ -1520,7 +1596,9 @@ def calculate_skin_quality(landmarks):
             print(f"⚠️ [NAN/INF] calculate_skin_quality: Invalid skin_quality ({skin_quality}), returning 50.0")
             return 50.0
         
-        return float(np.clip(skin_quality, 0, 100))
+        final_score = float(np.clip(skin_quality, 0, 100))
+        print(f"📊 [CALIBRATION] calculate_skin_quality: cv={cv:.6f}, ideal_range=[{cv_ideal_min}, {cv_ideal_max}], smoothness_score_raw={smoothness_score_raw:.2f}, smoothness_score={smoothness_score:.2f}, symmetry_score={symmetry_score:.2f}, final_score={final_score:.2f}")
+        return final_score
     except Exception as e:
         print(f"❌ [EXCEPTION] calculate_skin_quality: {str(e)}")
         import traceback
