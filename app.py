@@ -1943,6 +1943,15 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
         if np.isnan(potential) or np.isinf(potential):
             potential = None
         
+        # Log PSL and Potential in calibration format
+        if psl is not None:
+            print(f"📊 [CALIBRATION] FINAL_PSL: psl={psl:.2f}, scale=[0, 100], score={psl:.2f}")
+        if potential is not None:
+            print(f"📊 [CALIBRATION] POTENTIAL_PSL: potential={potential:.2f}, scale=[0, 100], score={potential:.2f}")
+            if psl is not None:
+                improvement = potential - psl
+                print(f"📊 [CALIBRATION] POTENTIAL_IMPROVEMENT: improvement={improvement:.2f} points ({improvement/psl*100:.1f}% increase)")
+        
         return {
             'overall': {
                 'psl': round(psl, 1) if psl is not None else None,
