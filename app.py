@@ -3162,28 +3162,35 @@ def dating_photo():
 
 @app.route('/api/generate-chad', methods=['POST'])
 def generate_chad():
-    """Endpoint for generating Chad version of user's face using OpenAI GPT Image 1.5"""
+    """Endpoint for generating Chad version of user's face using fal.ai FLUX.2 LoRA Edit with front and side profile"""
     try:
         # Get multipart form data
         front_file = request.files.get('front_image')
+        side_file = request.files.get('side_image')
         gender = request.form.get('gender', 'Male')
         
         if not front_file:
             return jsonify({"error": "Front image is required"}), 400
         
+        if not side_file:
+            return jsonify({"error": "Side profile image is required"}), 400
+        
         if not FAL_API_KEY:
             return jsonify({"error": "FAL API key not configured"}), 500
         
-        # Read and convert image
+        # Read and convert images
         try:
             front_bytes = front_file.read()
             front_image = Image.open(BytesIO(front_bytes))
+            
+            side_bytes = side_file.read()
+            side_image = Image.open(BytesIO(side_bytes))
         except Exception as e:
-            print(f"Error processing front image: {str(e)}")
+            print(f"Error processing images: {str(e)}")
             return jsonify({"error": "Invalid image format"}), 400
         
         # Generate chad version
-        generated_image = generate_chad_version(front_image, gender)
+        generated_image = generate_chad_version(front_image, side_image, gender)
         
         if generated_image is None:
             return jsonify({"error": "Failed to generate chad version"}), 500
@@ -3201,102 +3208,214 @@ def generate_chad():
         traceback.print_exc()
         return jsonify({"error": "Server error"}), 500
 
-def generate_chad_version(front_image: Image.Image, gender: str = "Male") -> Image.Image:
-    """Generate Chad version using OpenAI GPT Image 1.5 with high input fidelity for face preservation"""
-    if not OPENAI_API_KEY:
-        print("Error: OPENAI API key not set")
+def generate_chad_version(front_image: Image.Image, side_image: Image.Image, gender: str = "Male") -> Image.Image:
+    """Generate Chad version using fal.ai FLUX.2 LoRA Edit with front and side profile images"""
+    if not FAL_API_KEY:
+        print("Error: FAL API key not set")
         return None
     
     try:
-        # Import OpenAI client (lazy import)
+        # Import fal_client (lazy import)
         try:
-            from openai import OpenAI
+            import fal_client
         except ImportError:
-            print("ERROR: openai library not installed. Install with: pip install openai")
-            print("ERROR: Please ensure requirements.txt includes 'openai>=1.0.0' and Railway rebuilds dependencies")
+            print("ERROR: fal-client not installed. Install with: pip install fal-client")
             return None
         
-        client = OpenAI(api_key=OPENAI_API_KEY)
+        # Set API key via environment variable
+        if not os.getenv('FAL_KEY'):
+            os.environ['FAL_KEY'] = FAL_API_KEY
         
-        print(f"👑 Generating Chad version with OpenAI GPT Image 1.5...")
+        print(f"👑 Generating Chad version with fal.ai FLUX.2 LoRA Edit...")
         print(f"👤 Gender: {gender}")
         
-        # Prepare image for OpenAI API (needs to be a file-like object)
-        user_buffer = BytesIO()
-        front_image.save(user_buffer, format='JPEG', quality=90)
-        user_buffer.seek(0)
+        # Upload images using fal.storage.upload
+        front_buffer = BytesIO()
+        front_image.save(front_buffer, format='JPEG', quality=90)
+        front_buffer.seek(0)
         
-        # Gender-specific prompts (same as before)
+        side_buffer = BytesIO()
+        side_image.save(side_buffer, format='JPEG', quality=90)
+        side_buffer.seek(0)
+        
+        try:
+            # Upload front image (Image 1)
+            front_upload_result = fal_client.storage.upload(
+                front_buffer.getvalue(),
+                content_type="image/jpeg"
+            )
+            front_image_url = front_upload_result.get("url", "")
+            print(f"✅ Front image uploaded: {front_image_url[:50]}...")
+            
+            # Upload side image (Image 2)
+            side_upload_result = fal_client.storage.upload(
+                side_buffer.getvalue(),
+                content_type="image/jpeg"
+            )
+            side_image_url = side_upload_result.get("url", "")
+            print(f"✅ Side image uploaded: {side_image_url[:50]}...")
+        except Exception as e:
+            print(f"⚠️ Error uploading via storage.upload: {str(e)}")
+            # Fallback to base64
+            import base64
+            front_base64 = base64.b64encode(front_buffer.getvalue()).decode('utf-8')
+            front_image_url = f"data:image/jpeg;base64,{front_base64}"
+            side_base64 = base64.b64encode(side_buffer.getvalue()).decode('utf-8')
+            side_image_url = f"data:image/jpeg;base64,{side_base64}"
+        
+        # Gender-specific prompts referencing Image 1 (front) and Image 2 (side profile)
         if gender == "Female":
-            chad_prompt = """Transform this exact same woman into peak Stacy god-tier beautiful version of herself, hyperfeminine ultra-attractive top 1% female face, perfect facial harmony, extremely feminine and alluring features, high sharp feminine cheekbones, delicate defined jawline with soft graceful contours, full forward-grown chin, large captivating doe-like eyes with slight positive canthal tilt for a seductive yet innocent gaze, long thick dark eyelashes, arched feminine eyebrows, small delicate upturned nose, full plump feminine lips with perfect cupid's bow, flawless porcelain-smooth radiant skin, symmetrical ideal proportions, looks like she was sculpted by the gods for maximum feminine beauty, short-to-medium feminine hairstyle that matches her original hair texture and style (if curly keep curly, if Black woman keep appropriate Black hair texture and volume), ultra-feminine ideal, photorealistic, ultra-realistic, professional studio lighting exactly matching the original photo's lighting and shadows, high detail 8k, same ethnicity racial features preserved, same apparent age, 100% recognizable as the same person with identical facial identity and proportions enhanced to Stacy perfection"""
+            chad_prompt = """Use Image 1 (front-facing selfie) as the primary reference for:
+– identity
+– race and ethnicity
+– natural skin tone and undertone
+– eye color
+– apparent age
+– camera angle, framing, and head size
+
+Use Image 2 (side profile) only as a structural reference for:
+– jawline contour
+– chin projection
+– facial balance and depth
+
+IMPORTANT:
+The final output must be a front-facing selfie, matching the camera angle, framing, and composition of Image 1.
+Do not output a side profile.
+Do not rotate the head.
+Do not average the viewpoints.
+
+Transform the woman into a much more attractive, highly feminine, and visually striking version of herself, in a way that looks realistically achievable through modern cosmetic surgery, facial balancing, dermatology, and professional grooming, while preserving:
+– the same person and identity
+– the same race and ethnicity
+– the same natural skin tone (no lightening, no whitening, no normalization)
+– the same eye color
+– the same apparent age (do not de-age)
+
+Improve attractiveness through facial structure refinement only, keeping features consistent with her ethnicity and age:
+– softer but more defined jawline that enhances femininity
+– improved chin balance and projection appropriate to her face
+– higher, smoother cheekbones with elegant contour (not exaggerated)
+– refined eye area with a more confident, captivating gaze without changing eye shape typical of her ethnicity
+– improved eyebrow shape and placement that frames the eyes naturally
+– improved facial symmetry and proportional balance while preserving her natural character
+
+Skin & age preservation (critical):
+– keep the same natural skin tone, shade, and undertone visible in the input image
+– do not lighten, darken, desaturate, or normalize the skin
+– retain age-appropriate skin texture, lines, and character
+– do not smooth or de-age the face
+
+Eyes:
+– keep the original eye color and iris appearance
+– no recoloring or normalization
+
+Hair:
+– keep the same hair texture and natural pattern
+– improve grooming, shape, and health only
+
+Lighting & framing:
+– match the original lighting and shadows
+– keep the same crop, camera angle, head size, and framing
+– do not zoom, crop, or reframe
+
+The final image should look like a very attractive, confident woman who has been realistically optimized, while remaining clearly the same person, same race, same skin tone, same eye color, and the same age, viewed straight-on as a selfie."""
         else:  # Male (default)
-            chad_prompt = """Transform this exact same man into peak Chad god-tier handsome version of himself, hypermasculine top 1% male face, extremely strong angular chiseled jawline, massive prominent forward-grown chin, razor-sharp high cheekbones, intense hunter eyes with strong positive canthal tilt, thick low-set dark eyebrows, piercing dominant stare, flawless perfect skin, short textured masculine haircut that matches his original hair texture and style (if curly keep curly, if Black man keep appropriate Black hair texture), looks like he was sculpted by the gods, ultra-attractive masculine ideal, photorealistic, ultra-realistic, professional studio lighting exactly matching the original photo's lighting and shadows, high detail 8k, same ethnicity racial features preserved, same apparent age, 100% recognizable as the same person with identical facial identity and proportions upgraded to Chad perfection"""
+            chad_prompt = """Use Image 1 (front-facing selfie) as the primary reference for:
+– identity
+– race and ethnicity
+– natural skin tone and undertone
+– eye color
+– apparent age
+– camera angle, framing, and head size
+
+Use Image 2 (side profile) only as a structural reference for:
+– jawline angle
+– chin projection
+– facial depth
+
+IMPORTANT:
+The final output must be a front-facing selfie, matching the camera angle, framing, and composition of Image 1.
+Do not output a side profile.
+Do not rotate the head.
+Do not average the viewpoints.
+
+Transform the man into a much more handsome, highly attractive version of himself, in a way that looks realistically achievable through cosmetic surgery and facial balancing, while preserving:
+– the same person and identity
+– the same race and ethnicity
+– the same natural skin tone (no lightening, no whitening, no normalization)
+– the same eye color
+– the same apparent age (do not de-age)
+
+Improve attractiveness through facial structure refinement only:
+– stronger, more defined jawline
+– improved chin projection
+– enhanced cheekbone structure
+– more confident, masculine eye area
+
+Do NOT change colors (skin, eyes, hair).
+Do NOT change race or ethnic features.
+Do NOT crop, zoom, or reframe the image.
+
+Lighting and shadows must match Image 1 exactly.
+
+The result should look like the same man, same age, same race, same skin tone, but significantly more attractive, viewed straight-on as a selfie."""
         
-        print(f"📡 Calling OpenAI GPT Image API for Chad transformation...")
+        print(f"📡 Calling fal.ai FLUX.2 LoRA Edit API for Chad transformation...")
         print(f"📝 Prompt length: {len(chad_prompt)} characters")
         
-        # Use OpenAI images/edits endpoint with high input fidelity for face preservation
-        # Note: OpenAI GPT Image models require organization verification
-        # Try gpt-image-1.5 first, fallback to gpt-image-1 if organization not verified
-        # OpenAI API requires file with proper mimetype - use tuple format (filename, file_object, mimetype)
-        model_to_use = "gpt-image-1.5"
-        try:
-            result = client.images.edit(
-                model=model_to_use,
-                image=("image.jpg", user_buffer, "image/jpeg"),
-                prompt=chad_prompt,
-                input_fidelity="high",  # High fidelity for face preservation
-                quality="high",  # High quality output
-                output_format="jpeg",  # JPEG format as requested
-                size="auto",  # Auto size (will match input)
-                n=1  # Single image
-            )
-        except Exception as e:
-            # If gpt-image-1.5 requires organization verification, fallback to gpt-image-1
-            error_str = str(e).lower()
-            if "403" in str(e) or "organization" in error_str or "verified" in error_str:
-                print(f"⚠️ gpt-image-1.5 requires organization verification, falling back to gpt-image-1...")
-                model_to_use = "gpt-image-1"
-                # Reset buffer position for retry
-                user_buffer.seek(0)
-                try:
-                    result = client.images.edit(
-                        model=model_to_use,
-                        image=("image.jpg", user_buffer, "image/jpeg"),
-                        prompt=chad_prompt,
-                        input_fidelity="high",  # High fidelity for face preservation
-                        quality="high",  # High quality output
-                        output_format="jpeg",  # JPEG format as requested
-                        size="auto",  # Auto size (will match input)
-                        n=1  # Single image
-                    )
-                except Exception as e2:
-                    # If gpt-image-1 also requires verification, provide clear error message
-                    if "403" in str(e2) or "organization" in str(e2).lower() or "verified" in str(e2).lower():
-                        print("❌ ERROR: OpenAI GPT Image models require organization verification.")
-                        print("   Please verify your organization at: https://platform.openai.com/settings/organization/general")
-                        print("   After verification, wait up to 15 minutes for access to propagate.")
-                        raise Exception("OpenAI organization verification required. Please verify at https://platform.openai.com/settings/organization/general")
-                    else:
-                        # Re-raise if it's a different error
-                        raise
-            else:
-                # Re-raise if it's a different error
-                raise
+        # Use FLUX.2 LoRA edit endpoint with multiple images
+        # Image 1 (front) is the primary reference, Image 2 (side) is structural reference
+        # FLUX.2 LoRA supports multiple reference images via image_urls array
+        input_data = {
+            "image_urls": [front_image_url, side_image_url],  # Image 1 (front), Image 2 (side)
+            "prompt": chad_prompt,
+        }
         
-        print(f"📥 Received response from OpenAI (model: {model_to_use})")
+        result = fal_client.subscribe(
+            "fal-ai/flux-2/lora/edit",
+            arguments=input_data
+        )
         
-        # OpenAI returns base64-encoded image directly
-        if not result.data or len(result.data) == 0:
-            print("❌ No image data in response")
+        print(f"📥 Received response from fal.ai")
+        print(f"📋 Response type: {type(result)}")
+        
+        # Get the generated image URL
+        image_url = None
+        if isinstance(result, dict):
+            if "images" in result and len(result["images"]) > 0:
+                if isinstance(result["images"][0], dict):
+                    image_url = result["images"][0].get("url", "")
+                elif isinstance(result["images"][0], str):
+                    image_url = result["images"][0]
+            elif "image" in result:
+                if isinstance(result["image"], dict):
+                    image_url = result["image"].get("url", "")
+                elif isinstance(result["image"], str):
+                    image_url = result["image"]
+            elif "url" in result:
+                image_url = result["url"]
+        
+        if not image_url:
+            print("❌ No image URL in response")
+            print(f"Full response: {result}")
             return None
         
-        image_base64 = result.data[0].b64_json
-        image_bytes = base64.b64decode(image_base64)
-        generated_image = Image.open(BytesIO(image_bytes))
-        
-        print(f"✅ Chad image generated successfully (size: {generated_image.size})")
-        return generated_image
+        # Download the image
+        print(f"📥 Downloading generated Chad image from: {image_url}")
+        try:
+            response = requests.get(image_url, timeout=30)
+            response.raise_for_status()
+            
+            if len(response.content) < 1000:
+                print(f"⚠️ Warning: Downloaded image seems too small ({len(response.content)} bytes)")
+            
+            generated_image = Image.open(BytesIO(response.content))
+            print(f"✅ Chad image generated successfully (size: {generated_image.size})")
+            return generated_image
+            
+        except Exception as e:
+            print(f"❌ Error downloading image: {str(e)}")
+            return None
             
     except Exception as e:
         print(f"❌ Error generating Chad version: {str(e)}")
