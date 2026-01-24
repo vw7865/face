@@ -3236,9 +3236,10 @@ def generate_chad_version(front_image: Image.Image, gender: str = "Male") -> Ima
         print(f"📝 Prompt length: {len(chad_prompt)} characters")
         
         # Use OpenAI images/edits endpoint with high input fidelity for face preservation
+        # OpenAI API requires file with proper mimetype - use tuple format (filename, file_object, mimetype)
         result = client.images.edit(
             model="gpt-image-1.5",
-            image=user_buffer,
+            image=("image.jpg", user_buffer, "image/jpeg"),
             prompt=chad_prompt,
             input_fidelity="high",  # High fidelity for face preservation
             quality="high",  # High quality output
