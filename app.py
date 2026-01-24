@@ -3236,6 +3236,7 @@ def generate_chad_version(front_image: Image.Image, gender: str = "Male") -> Ima
         print(f"📝 Prompt length: {len(chad_prompt)} characters")
         
         # Use OpenAI images/edits endpoint with high input fidelity for face preservation
+        # Note: OpenAI GPT Image models require organization verification
         # Try gpt-image-1.5 first, fallback to gpt-image-1 if organization not verified
         # OpenAI API requires file with proper mimetype - use tuple format (filename, file_object, mimetype)
         model_to_use = "gpt-image-1.5"
@@ -3252,21 +3253,33 @@ def generate_chad_version(front_image: Image.Image, gender: str = "Male") -> Ima
             )
         except Exception as e:
             # If gpt-image-1.5 requires organization verification, fallback to gpt-image-1
-            if "403" in str(e) or "organization" in str(e).lower() or "verified" in str(e).lower():
+            error_str = str(e).lower()
+            if "403" in str(e) or "organization" in error_str or "verified" in error_str:
                 print(f"⚠️ gpt-image-1.5 requires organization verification, falling back to gpt-image-1...")
                 model_to_use = "gpt-image-1"
                 # Reset buffer position for retry
                 user_buffer.seek(0)
-                result = client.images.edit(
-                    model=model_to_use,
-                    image=("image.jpg", user_buffer, "image/jpeg"),
-                    prompt=chad_prompt,
-                    input_fidelity="high",  # High fidelity for face preservation
-                    quality="high",  # High quality output
-                    output_format="jpeg",  # JPEG format as requested
-                    size="auto",  # Auto size (will match input)
-                    n=1  # Single image
-                )
+                try:
+                    result = client.images.edit(
+                        model=model_to_use,
+                        image=("image.jpg", user_buffer, "image/jpeg"),
+                        prompt=chad_prompt,
+                        input_fidelity="high",  # High fidelity for face preservation
+                        quality="high",  # High quality output
+                        output_format="jpeg",  # JPEG format as requested
+                        size="auto",  # Auto size (will match input)
+                        n=1  # Single image
+                    )
+                except Exception as e2:
+                    # If gpt-image-1 also requires verification, provide clear error message
+                    if "403" in str(e2) or "organization" in str(e2).lower() or "verified" in str(e2).lower():
+                        print("❌ ERROR: OpenAI GPT Image models require organization verification.")
+                        print("   Please verify your organization at: https://platform.openai.com/settings/organization/general")
+                        print("   After verification, wait up to 15 minutes for access to propagate.")
+                        raise Exception("OpenAI organization verification required. Please verify at https://platform.openai.com/settings/organization/general")
+                    else:
+                        # Re-raise if it's a different error
+                        raise
             else:
                 # Re-raise if it's a different error
                 raise
