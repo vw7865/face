@@ -3240,44 +3240,11 @@ def generate_chad_version(front_image: Image.Image, gender: str = "Male") -> Ima
             user_base64 = base64.b64encode(user_buffer.getvalue()).decode('utf-8')
             user_image_url = f"data:image/jpeg;base64,{user_base64}"
         
-        # Gender-specific terms
+        # Gender-specific prompts
         if gender == "Female":
-            attractiveness_tier = "elite Stacy/model-tier attractiveness (PSL 8–9 range)"
-            jawline_desc = "delicate, defined, heart-shaped jawline and chin with soft, feminine angles — enhance current bone structure only, do NOT change proportions or ethnicity"
-            cheekbones_desc = "high, defined cheekbones with natural contouring and subtle shadowing for elegant, feminine structure — improve existing cheeks, do NOT invent new ones"
-            hair_desc = "thicker, fuller, denser, and healthier hair with perfect hairline and ideal volume — KEEP THE EXACT SAME curl pattern, coil tightness, texture, color, length, direction, style, and messiness from the original (NO straightening or texture change of any kind)"
-            features_desc = "perfect symmetry/harmony, ideal FWHR, compact midface ratio, positive canthal tilt, doe eyes with balanced IPD, small refined nose bridge (subtle shape improvement only), full feminine lips, flawless glass-skin with even tone and subtle glow — remove acne/blemishes/dark circles/asymmetry/failos only"
-            beauty_type = "elite feminine beauty"
-            facial_hair_note = ""  # No facial hair for females
-            eye_type = "doe eyes"
+            chad_prompt = """Transform this exact same woman into peak Stacy god-tier beautiful version of herself, hyperfeminine ultra-attractive top 1% female face, perfect facial harmony, extremely feminine and alluring features, high sharp feminine cheekbones, delicate defined jawline with soft graceful contours, full forward-grown chin, large captivating doe-like eyes with slight positive canthal tilt for a seductive yet innocent gaze, long thick dark eyelashes, arched feminine eyebrows, small delicate upturned nose, full plump feminine lips with perfect cupid's bow, flawless porcelain-smooth radiant skin, symmetrical ideal proportions, looks like she was sculpted by the gods for maximum feminine beauty, short-to-medium feminine hairstyle that matches her original hair texture and style (if curly keep curly, if Black woman keep appropriate Black hair texture and volume), ultra-feminine ideal, photorealistic, ultra-realistic, professional studio lighting exactly matching the original photo's lighting and shadows, high detail 8k, same ethnicity racial features preserved, same apparent age, 100% recognizable as the same person with identical facial identity and proportions enhanced to Stacy perfection"""
         else:  # Male (default)
-            attractiveness_tier = "elite Chad/mogger-tier attractiveness (PSL 8–9 range)"
-            jawline_desc = "strong, angular, forward-grown masculine model-tier shape with ideal gonial angle and prominent ramus — enhance current bone structure only, do NOT change proportions or ethnicity"
-            cheekbones_desc = "high, prominent, hollowed cheekbones with natural zygomatic projection and subtle shadowing for chiseled look — improve existing cheeks, do NOT invent new ones"
-            hair_desc = "thicker, fuller, denser, and healthier with perfect Norwood 0 hairline and ideal volume — KEEP THE EXACT SAME curl pattern, coil tightness, texture, color, length, direction, style, and messiness from the original (NO straightening or texture change of any kind)"
-            features_desc = "perfect symmetry/harmony, ideal FWHR, compact midface ratio, positive canthal tilt, hunter eyes with slight hooding, balanced IPD, refined straight nose bridge (subtle shape improvement only), full masculine lips, flawless glass-skin with even tone and subtle glow — remove acne/blemishes/dark circles/asymmetry/failos only"
-            beauty_type = "elite masculine beauty"
-            facial_hair_note = " Do NOT add beard, stubble, facial hair, or any facial hair unless it is clearly visible and present in the original selfie — if the man has no beard/stubble, keep the face completely clean-shaven with no additions."
-            eye_type = "hunter eyes with slight hooding"
-        
-        # Ultra-detailed mogger transformation prompt
-        chad_prompt = f"""Ultra-realistic photorealistic full-body portrait transformation and face/body swap: Take the EXACT full body, head, face, skin tone, ethnicity, hair texture/type, curl pattern, messiness, direction, length, color, and overall identity from the input selfie image — KEEP THE HAIR 100% AS-IS WITH NO CHANGES WHATSOEVER. Do NOT straighten, loosen, tighten, alter, modify, or change the hair curl/coil pattern, texture, style, direction, or type under any circumstances, regardless of ethnicity.
-
-Replace the entire person in the reference image with this exact user body, head, and face. Preserve the reference image's exact background, environment, lighting, camera angle, composition, pose, clothing style/fit, and scene details perfectly — no modifications to pose, clothes, background, lighting, or environment.
-
-Add a subtle, natural closed-mouth smile (slight upward lip corners for confident expression, no teeth showing) — enhance the existing expression realistically.
-
-Beautify and upgrade to {attractiveness_tier} while preserving 100% core identity, ethnicity, age, bone structure proportions, hair (KEEP EXACT SAME curl/straightness/texture/color/length/style/messiness as original), and all original features.{facial_hair_note}
-
-Only apply natural, believable enhancements to existing traits:
-- Sharpen and define the existing jawline and chin to {jawline_desc}.
-- Boost existing cheekbones to {cheekbones_desc}.
-- Make hair {hair_desc}.
-- Achieve {features_desc}.
-- Maintain realistic skin pores, natural lighting, subtle facial/body details, original proportions/frame, and exact identity — no cartoonish, over-filtered, plastic, or fake look.
-- Keep the same ethnicity/racial features, age, recognizable identity, and all original characteristics — only upgrade existing traits to {beauty_type} level.
-
-Ultra-realistic, professional lighting matching the reference, sharp 8K focus, no artifacts, no uncanny valley, believable natural enhancement that looks like a real high-tier model version of the same person swapped into the reference scene."""
+            chad_prompt = """Transform this exact same man into peak Chad god-tier handsome version of himself, hypermasculine top 1% male face, extremely strong angular chiseled jawline, massive prominent forward-grown chin, razor-sharp high cheekbones, intense hunter eyes with strong positive canthal tilt, thick low-set dark eyebrows, piercing dominant stare, flawless perfect skin, short textured masculine haircut that matches his original hair texture and style (if curly keep curly, if Black man keep appropriate Black hair texture), looks like he was sculpted by the gods, ultra-attractive masculine ideal, photorealistic, ultra-realistic, professional studio lighting exactly matching the original photo's lighting and shadows, high detail 8k, same ethnicity racial features preserved, same apparent age, 100% recognizable as the same person with identical facial identity and proportions upgraded to Chad perfection"""
         
         print(f"📡 Calling fal.ai flux-pro/kontext API for Chad transformation...")
         
