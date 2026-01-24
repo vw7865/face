@@ -3213,6 +3213,7 @@ def generate_chad_version(front_image: Image.Image, gender: str = "Male") -> Ima
             from openai import OpenAI
         except ImportError:
             print("ERROR: openai library not installed. Install with: pip install openai")
+            print("ERROR: Please ensure requirements.txt includes 'openai>=1.0.0' and Railway rebuilds dependencies")
             return None
         
         client = OpenAI(api_key=OPENAI_API_KEY)
