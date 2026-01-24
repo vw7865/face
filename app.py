@@ -3352,6 +3352,13 @@ Improve attractiveness through facial structure refinement only:
 – enhanced cheekbone structure
 – more confident, masculine eye area
 
+HAIR (ONLY IF NEEDED):
+– If the man is bald or has a clearly receding or poor hairline, add a full, natural, age-appropriate head of hair
+– Hair must look realistically achievable (e.g., hair transplant or restoration), not stylized
+– Hair texture must match his ethnicity
+– Hair color must match his natural hair color
+– If the man already has hair, do not change it
+
 Do NOT change colors (skin, eyes, hair).
 Do NOT change race or ethnic features.
 Do NOT crop, zoom, or reframe the image.
