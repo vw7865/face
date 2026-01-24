@@ -2685,6 +2685,7 @@ def analyze_face():
 # Fireworks API configuration
 FIREWORKS_API_KEY = os.getenv('FIREWORKS_API_KEY')
 FAL_API_KEY = os.getenv('FAL_API_KEY')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 # System prompt for RizzMaxxing (text conversation analysis)
 RIZZMAXXING_SYSTEM_PROMPT = """
@@ -3161,7 +3162,7 @@ def dating_photo():
 
 @app.route('/api/generate-chad', methods=['POST'])
 def generate_chad():
-    """Endpoint for generating Chad version of user's face using fal.ai flux-pro/kontext"""
+    """Endpoint for generating Chad version of user's face using OpenAI GPT Image 1.5"""
     try:
         # Get multipart form data
         front_file = request.files.get('front_image')
@@ -3201,107 +3202,63 @@ def generate_chad():
         return jsonify({"error": "Server error"}), 500
 
 def generate_chad_version(front_image: Image.Image, gender: str = "Male") -> Image.Image:
-    """Generate Chad version using fal.ai flux-pro/kontext with detailed beautification prompt"""
-    if not FAL_API_KEY:
-        print("Error: FAL API key not set")
+    """Generate Chad version using OpenAI GPT Image 1.5 with high input fidelity for face preservation"""
+    if not OPENAI_API_KEY:
+        print("Error: OPENAI API key not set")
         return None
     
     try:
-        # Import fal_client (lazy import)
+        # Import OpenAI client (lazy import)
         try:
-            import fal_client
+            from openai import OpenAI
         except ImportError:
-            print("ERROR: fal-client not installed. Install with: pip install fal-client")
+            print("ERROR: openai library not installed. Install with: pip install openai")
             return None
         
-        # Set API key via environment variable
-        if not os.getenv('FAL_KEY'):
-            os.environ['FAL_KEY'] = FAL_API_KEY
+        client = OpenAI(api_key=OPENAI_API_KEY)
         
-        print(f"👑 Generating Chad version with fal.ai flux-pro/kontext...")
+        print(f"👑 Generating Chad version with OpenAI GPT Image 1.5...")
         print(f"👤 Gender: {gender}")
         
-        # Upload image using fal.storage.upload
+        # Prepare image for OpenAI API (needs to be a file-like object)
         user_buffer = BytesIO()
         front_image.save(user_buffer, format='JPEG', quality=90)
         user_buffer.seek(0)
         
-        try:
-            user_upload_result = fal_client.storage.upload(
-                user_buffer.getvalue(),
-                content_type="image/jpeg"
-            )
-            user_image_url = user_upload_result.get("url", "")
-            print(f"✅ User image uploaded: {user_image_url[:50]}...")
-        except Exception as e:
-            print(f"⚠️ Error uploading via storage.upload: {str(e)}")
-            # Fallback to base64
-            import base64
-            user_base64 = base64.b64encode(user_buffer.getvalue()).decode('utf-8')
-            user_image_url = f"data:image/jpeg;base64,{user_base64}"
-        
-        # Gender-specific prompts
+        # Gender-specific prompts (same as before)
         if gender == "Female":
             chad_prompt = """Transform this exact same woman into peak Stacy god-tier beautiful version of herself, hyperfeminine ultra-attractive top 1% female face, perfect facial harmony, extremely feminine and alluring features, high sharp feminine cheekbones, delicate defined jawline with soft graceful contours, full forward-grown chin, large captivating doe-like eyes with slight positive canthal tilt for a seductive yet innocent gaze, long thick dark eyelashes, arched feminine eyebrows, small delicate upturned nose, full plump feminine lips with perfect cupid's bow, flawless porcelain-smooth radiant skin, symmetrical ideal proportions, looks like she was sculpted by the gods for maximum feminine beauty, short-to-medium feminine hairstyle that matches her original hair texture and style (if curly keep curly, if Black woman keep appropriate Black hair texture and volume), ultra-feminine ideal, photorealistic, ultra-realistic, professional studio lighting exactly matching the original photo's lighting and shadows, high detail 8k, same ethnicity racial features preserved, same apparent age, 100% recognizable as the same person with identical facial identity and proportions enhanced to Stacy perfection"""
         else:  # Male (default)
             chad_prompt = """Transform this exact same man into peak Chad god-tier handsome version of himself, hypermasculine top 1% male face, extremely strong angular chiseled jawline, massive prominent forward-grown chin, razor-sharp high cheekbones, intense hunter eyes with strong positive canthal tilt, thick low-set dark eyebrows, piercing dominant stare, flawless perfect skin, short textured masculine haircut that matches his original hair texture and style (if curly keep curly, if Black man keep appropriate Black hair texture), looks like he was sculpted by the gods, ultra-attractive masculine ideal, photorealistic, ultra-realistic, professional studio lighting exactly matching the original photo's lighting and shadows, high detail 8k, same ethnicity racial features preserved, same apparent age, 100% recognizable as the same person with identical facial identity and proportions upgraded to Chad perfection"""
         
-        print(f"📡 Calling fal.ai flux-pro/kontext API for Chad transformation...")
+        print(f"📡 Calling OpenAI GPT Image 1.5 API for Chad transformation...")
+        print(f"📝 Prompt length: {len(chad_prompt)} characters")
         
-        # Use flux-pro/kontext for single-image editing with detailed prompt
-        input_data = {
-            "image_url": user_image_url,
-            "prompt": chad_prompt,
-            "num_images": 1,
-            "guidance_scale": 8.0,  # Higher guidance for better prompt following
-            "num_inference_steps": 35,  # More steps for better quality
-        }
-        
-        result = fal_client.subscribe(
-            "fal-ai/flux-pro/kontext",
-            arguments=input_data
+        # Use OpenAI images/edits endpoint with high input fidelity for face preservation
+        result = client.images.edit(
+            model="gpt-image-1.5",
+            image=user_buffer,
+            prompt=chad_prompt,
+            input_fidelity="high",  # High fidelity for face preservation
+            quality="high",  # High quality output
+            output_format="jpeg",  # JPEG format as requested
+            size="auto",  # Auto size (will match input)
+            n=1  # Single image
         )
         
-        print(f"📥 Received response from fal.ai")
-        print(f"📋 Response type: {type(result)}")
+        print(f"📥 Received response from OpenAI")
         
-        # Get the generated image URL
-        image_url = None
-        if isinstance(result, dict):
-            if "images" in result and len(result["images"]) > 0:
-                if isinstance(result["images"][0], dict):
-                    image_url = result["images"][0].get("url", "")
-                elif isinstance(result["images"][0], str):
-                    image_url = result["images"][0]
-            elif "image" in result:
-                if isinstance(result["image"], dict):
-                    image_url = result["image"].get("url", "")
-                elif isinstance(result["image"], str):
-                    image_url = result["image"]
-            elif "url" in result:
-                image_url = result["url"]
-        
-        if not image_url:
-            print("❌ No image URL in response")
-            print(f"Full response: {result}")
+        # OpenAI returns base64-encoded image directly
+        if not result.data or len(result.data) == 0:
+            print("❌ No image data in response")
             return None
         
-        # Download the image
-        print(f"📥 Downloading generated Chad image from: {image_url}")
-        try:
-            response = requests.get(image_url, timeout=30)
-            response.raise_for_status()
-            
-            if len(response.content) < 1000:
-                print(f"⚠️ Warning: Downloaded image seems too small ({len(response.content)} bytes)")
-            
-            generated_image = Image.open(BytesIO(response.content))
-            print(f"✅ Chad image generated successfully (size: {generated_image.size})")
-            return generated_image
-            
-        except Exception as e:
-            print(f"❌ Error downloading image: {str(e)}")
-            return None
+        image_base64 = result.data[0].b64_json
+        image_bytes = base64.b64decode(image_base64)
+        generated_image = Image.open(BytesIO(image_bytes))
+        
+        print(f"✅ Chad image generated successfully (size: {generated_image.size})")
+        return generated_image
             
     except Exception as e:
         print(f"❌ Error generating Chad version: {str(e)}")
