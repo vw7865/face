@@ -3232,23 +3232,46 @@ def generate_chad_version(front_image: Image.Image, gender: str = "Male") -> Ima
         else:  # Male (default)
             chad_prompt = """Transform this exact same man into peak Chad god-tier handsome version of himself, hypermasculine top 1% male face, extremely strong angular chiseled jawline, massive prominent forward-grown chin, razor-sharp high cheekbones, intense hunter eyes with strong positive canthal tilt, thick low-set dark eyebrows, piercing dominant stare, flawless perfect skin, short textured masculine haircut that matches his original hair texture and style (if curly keep curly, if Black man keep appropriate Black hair texture), looks like he was sculpted by the gods, ultra-attractive masculine ideal, photorealistic, ultra-realistic, professional studio lighting exactly matching the original photo's lighting and shadows, high detail 8k, same ethnicity racial features preserved, same apparent age, 100% recognizable as the same person with identical facial identity and proportions upgraded to Chad perfection"""
         
-        print(f"📡 Calling OpenAI GPT Image 1.5 API for Chad transformation...")
+        print(f"📡 Calling OpenAI GPT Image API for Chad transformation...")
         print(f"📝 Prompt length: {len(chad_prompt)} characters")
         
         # Use OpenAI images/edits endpoint with high input fidelity for face preservation
+        # Try gpt-image-1.5 first, fallback to gpt-image-1 if organization not verified
         # OpenAI API requires file with proper mimetype - use tuple format (filename, file_object, mimetype)
-        result = client.images.edit(
-            model="gpt-image-1.5",
-            image=("image.jpg", user_buffer, "image/jpeg"),
-            prompt=chad_prompt,
-            input_fidelity="high",  # High fidelity for face preservation
-            quality="high",  # High quality output
-            output_format="jpeg",  # JPEG format as requested
-            size="auto",  # Auto size (will match input)
-            n=1  # Single image
-        )
+        model_to_use = "gpt-image-1.5"
+        try:
+            result = client.images.edit(
+                model=model_to_use,
+                image=("image.jpg", user_buffer, "image/jpeg"),
+                prompt=chad_prompt,
+                input_fidelity="high",  # High fidelity for face preservation
+                quality="high",  # High quality output
+                output_format="jpeg",  # JPEG format as requested
+                size="auto",  # Auto size (will match input)
+                n=1  # Single image
+            )
+        except Exception as e:
+            # If gpt-image-1.5 requires organization verification, fallback to gpt-image-1
+            if "403" in str(e) or "organization" in str(e).lower() or "verified" in str(e).lower():
+                print(f"⚠️ gpt-image-1.5 requires organization verification, falling back to gpt-image-1...")
+                model_to_use = "gpt-image-1"
+                # Reset buffer position for retry
+                user_buffer.seek(0)
+                result = client.images.edit(
+                    model=model_to_use,
+                    image=("image.jpg", user_buffer, "image/jpeg"),
+                    prompt=chad_prompt,
+                    input_fidelity="high",  # High fidelity for face preservation
+                    quality="high",  # High quality output
+                    output_format="jpeg",  # JPEG format as requested
+                    size="auto",  # Auto size (will match input)
+                    n=1  # Single image
+                )
+            else:
+                # Re-raise if it's a different error
+                raise
         
-        print(f"📥 Received response from OpenAI")
+        print(f"📥 Received response from OpenAI (model: {model_to_use})")
         
         # OpenAI returns base64-encoded image directly
         if not result.data or len(result.data) == 0:
