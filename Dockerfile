@@ -36,7 +36,8 @@ RUN pip install --no-cache-dir \
     "Pillow>=10.0.0" \
     "gunicorn==21.2.0" \
     "requests>=2.31.0" \
-    "fal-client>=0.4.0"
+    "fal-client>=0.4.0" \
+    "openai>=1.0.0"
 
 # Install heavy ML dependencies
 RUN pip install --no-cache-dir \
