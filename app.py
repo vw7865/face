@@ -3107,12 +3107,16 @@ def looksmax_advice():
 
 @app.route('/api/dating-photo', methods=['POST'])
 def dating_photo():
-    """Endpoint for generating dating profile photos using fal.ai FLUX.1 Kontext [pro] (image editing) or FLUX.2 [max] (text-to-image)"""
+    """Endpoint for generating dating profile photos using fal.ai FLUX.2 LoRA Edit"""
     try:
         data = request.get_json()
         user_photo_base64 = data.get('userPhoto', '')
         reference_image_base64 = data.get('referenceImage', '')
         prompt = data.get('prompt', '').strip()
+        swap_type = data.get('swapType', '')  # "Face Only" or "Face + Body"
+        match_clothing_to_scene = data.get('matchClothingToScene', False)  # Boolean for single image mode
+        clothing_source = data.get('clothingSource', '')  # "My image" or "The reference image"
+        comments = data.get('comments', '').strip()  # Additional comments
         
         if not user_photo_base64:
             return jsonify({"error": "User photo is required"}), 400
@@ -3141,8 +3145,16 @@ def dating_photo():
                 print(f"Error decoding reference image: {str(e)}")
                 return jsonify({"error": "Invalid reference image format"}), 400
         
-        # Generate photo using fal.ai
-        generated_image = generate_dating_photo(user_image, reference_image, prompt)
+        # Generate photo using fal.ai FLUX.2 LoRA Edit
+        generated_image = generate_dating_photo(
+            user_image, 
+            reference_image, 
+            prompt,
+            swap_type=swap_type,
+            match_clothing_to_scene=match_clothing_to_scene,
+            clothing_source=clothing_source,
+            comments=comments
+        )
         
         if generated_image is None:
             return jsonify({"error": "Failed to generate image"}), 500
@@ -3430,8 +3442,16 @@ The result should look like the same man, same age, same race, same skin tone, b
         traceback.print_exc()
         return None
 
-def generate_dating_photo(user_image: Image.Image, reference_image: Image.Image = None, prompt: str = "") -> Image.Image:
-    """Generate dating profile photo using fal.ai FLUX.1 Kontext [pro] (image editing) or FLUX.2 [max] (text-to-image)"""
+def generate_dating_photo(
+    user_image: Image.Image, 
+    reference_image: Image.Image = None, 
+    prompt: str = "",
+    swap_type: str = "",
+    match_clothing_to_scene: bool = False,
+    clothing_source: str = "",
+    comments: str = ""
+) -> Image.Image:
+    """Generate dating profile photo using fal.ai FLUX.2 LoRA Edit with scene-aware clothing and clothing source options"""
     if not FAL_API_KEY:
         print("Error: FAL API key not set")
         return None
@@ -3444,147 +3464,118 @@ def generate_dating_photo(user_image: Image.Image, reference_image: Image.Image 
             print("ERROR: fal-client not installed. Install with: pip install fal-client")
             return None
         
-        # Set API key via environment variable (fal_client uses FAL_KEY env var)
-        # If FAL_KEY is not already set, set it from FAL_API_KEY
+        # Set API key via environment variable
         if not os.getenv('FAL_KEY'):
             os.environ['FAL_KEY'] = FAL_API_KEY
         
-        print(f"🎨 Generating photo with fal.ai FLUX.1 Kontext [pro]...")
+        print(f"🎨 Generating photo with fal.ai FLUX.2 LoRA Edit...")
         print(f"📝 Prompt: {prompt[:100]}...")
         print(f"📸 Reference image: {'Yes' if reference_image else 'No'}")
+        print(f"🔄 Swap type: {swap_type}")
+        print(f"👕 Match clothing to scene: {match_clothing_to_scene}")
+        print(f"👔 Clothing source: {clothing_source}")
+        print(f"💬 Comments: {comments[:50] if comments else 'None'}...")
         
-        # Upload user image to a temporary URL (we'll use fal.ai's upload endpoint or base64)
-        # For now, we'll convert to base64 and use it directly
-        # In production, you might want to upload to a temporary storage first
+        # Process prompt based on mode and options
+        final_prompt = prompt
+        
+        # Single Image Mode: Add scene-aware clothing logic
+        if not reference_image and match_clothing_to_scene:
+            # Extract scene description from prompt (it's embedded in the prompt)
+            scene_lower = prompt.lower()
+            clothing_instruction = ""
+            
+            # Detect scene types that require specific clothing
+            if any(word in scene_lower for word in ["pool", "swimming", "beach", "ocean", "lake", "water", "diving", "surfing"]):
+                clothing_instruction = "Change clothing to appropriate swimwear (swim trunks for men, bikini/swimsuit for women)."
+            elif any(word in scene_lower for word in ["gym", "workout", "fitness", "exercise", "running", "yoga", "training"]):
+                clothing_instruction = "Change clothing to athletic wear (gym clothes, workout gear, sportswear)."
+            elif any(word in scene_lower for word in ["formal", "wedding", "business", "suit", "tuxedo", "gala", "dinner party", "black tie"]):
+                clothing_instruction = "Change clothing to formal wear appropriate for the occasion (suit/tuxedo for men, formal dress for women)."
+            elif any(word in scene_lower for word in ["winter", "snow", "skiing", "snowboarding", "cold"]):
+                clothing_instruction = "Change clothing to warm winter wear (winter jacket, warm clothing)."
+            elif any(word in scene_lower for word in ["summer", "hot", "tropical", "vacation"]):
+                clothing_instruction = "Change clothing to light summer wear (shorts, t-shirt, summer clothing)."
+            
+            # Add clothing instruction to prompt if needed
+            if clothing_instruction:
+                final_prompt = f"{prompt} {clothing_instruction}"
+        
+        # Upload images
+        user_buffer = BytesIO()
+        user_image.save(user_buffer, format='JPEG', quality=90)
+        user_buffer.seek(0)
+        
+        try:
+            user_upload_result = fal_client.storage.upload(
+                user_buffer.getvalue(),
+                content_type="image/jpeg"
+            )
+            user_image_url = user_upload_result.get("url", "")
+            print(f"✅ User photo uploaded: {user_image_url[:50]}...")
+        except Exception as e:
+            print(f"⚠️ Error uploading via storage.upload: {str(e)}")
+            import base64
+            user_base64 = base64.b64encode(user_buffer.getvalue()).decode('utf-8')
+            user_image_url = f"data:image/jpeg;base64,{user_base64}"
         
         if reference_image:
-            # Scenario 1: With reference image - Use flux-2-max/edit for person replacement
-            # flux-2-max/edit supports multiple images via image_urls array
-            # We'll pass reference image as base and user photo, then use prompt to replace person
-            
-            print("📤 Uploading user photo...")
-            user_buffer = BytesIO()
-            user_image.save(user_buffer, format='JPEG', quality=90)
-            user_buffer.seek(0)
-            
-            print("📤 Uploading reference image...")
+            # Full Body Swap: Use FLUX.2 LoRA Edit with both images
             ref_buffer = BytesIO()
             reference_image.save(ref_buffer, format='JPEG', quality=90)
             ref_buffer.seek(0)
             
-            # Upload images using fal.storage.upload (proper method per fal.ai docs)
-            # This is more reliable than base64 data URIs for large images
             try:
-                # Upload reference image
                 ref_upload_result = fal_client.storage.upload(
                     ref_buffer.getvalue(),
                     content_type="image/jpeg"
                 )
                 reference_image_url = ref_upload_result.get("url", "")
                 print(f"✅ Reference image uploaded: {reference_image_url[:50]}...")
-                
-                # Upload user photo
-                user_upload_result = fal_client.storage.upload(
-                    user_buffer.getvalue(),
-                    content_type="image/jpeg"
-                )
-                user_image_url = user_upload_result.get("url", "")
-                print(f"✅ User photo uploaded: {user_image_url[:50]}...")
             except Exception as e:
-                print(f"⚠️ Error uploading via storage.upload: {str(e)}")
-                print(f"📝 Falling back to base64 data URI...")
-                # Fallback to base64 if upload fails
+                print(f"⚠️ Error uploading reference image: {str(e)}")
                 import base64
                 ref_base64 = base64.b64encode(ref_buffer.getvalue()).decode('utf-8')
                 reference_image_url = f"data:image/jpeg;base64,{ref_base64}"
-                user_base64 = base64.b64encode(user_buffer.getvalue()).decode('utf-8')
-                user_image_url = f"data:image/jpeg;base64,{user_base64}"
-                print(f"✅ Images encoded as base64 data URIs")
             
-            # Use flux-2-max/edit with both images
-            # Reference image is @Image1 (base), user photo is @Image2
-            # The prompt will instruct to replace person in @Image1 with person from @Image2
-            enhanced_prompt = f"{prompt}. Replace the entire person in @Image1 with the full body and face from @Image2. Keep the exact pose, clothing, background, lighting, and environment from @Image1. Photorealistic, natural, high detail, no artifacts."
+            # Build enhanced prompt for full body swap
+            # The prompt from iOS already includes clothing instructions, so we just add backend enhancement
+            if swap_type == "Face Only":
+                enhanced_prompt = f"{final_prompt} Replace only the face of the person in @Image1 with the face/identity from @Image2. Keep the original body, head size, pose, clothing, background, lighting, and environment exactly the same. Photorealistic, natural, high detail, no artifacts."
+            else:  # Face + Body
+                # Check clothing source and adjust prompt accordingly
+                if clothing_source == "The reference image":
+                    enhanced_prompt = f"{final_prompt} Replace the face and visible body of the person in @Image1 with the identity and body build from @Image2. Keep the original pose, clothing, background, lighting, and environment exactly the same. Use the clothing from @Image1 (the reference image). Photorealistic, natural, high detail, no artifacts."
+                else:  # My image (default)
+                    enhanced_prompt = f"{final_prompt} Replace the face and visible body of the person in @Image1 with the identity and body build from @Image2. Keep the original pose, background, lighting, and environment exactly the same. Use the clothing from @Image2 (my uploaded photo). Photorealistic, natural, high detail, no artifacts."
             
-            print(f"📡 Calling fal.ai FLUX.2 [max] /edit API for person replacement...")
-            print(f"📝 Using reference image as base, replacing person with your photo")
+            print(f"📡 Calling fal.ai FLUX.2 LoRA Edit API for person replacement...")
             
-            # flux-2-max/edit accepts image_urls as an array
-            # First image is the reference (base), second is the user's photo
             input_data = {
                 "image_urls": [reference_image_url, user_image_url],  # Reference first, then user photo
                 "prompt": enhanced_prompt,
-                "image_size": "auto",  # Let model determine size based on input
-                "output_format": "jpeg",
             }
             
             result = fal_client.subscribe(
-                "fal-ai/flux-2-max/edit",
+                "fal-ai/flux-2/lora/edit",
                 arguments=input_data
             )
         else:
-            # Scenario 2: Without reference image - Use user's photo as base and edit it
-            # Upload user photo to get URL
-            print("📤 Uploading user photo...")
-            user_buffer = BytesIO()
-            user_image.save(user_buffer, format='JPEG', quality=90)
-            user_buffer.seek(0)
+            # Single Image Mode: Use FLUX.2 LoRA Edit with single image
+            # Add backend enhancement to keep person unchanged
+            enhanced_prompt = f"{final_prompt} Keep the person's face, body, and physical appearance exactly the same as in this image. Only change the background, scene, environment, and setting. Maintain the same person, same face, same body features."
             
-            # Upload user image using fal.storage.upload (proper method per fal.ai docs)
-            try:
-                user_upload_result = fal_client.storage.upload(
-                    user_buffer.getvalue(),
-                    content_type="image/jpeg"
-                )
-                user_image_url = user_upload_result.get("url", "")
-                print(f"✅ User photo uploaded via storage.upload: {user_image_url[:50]}...")
-            except Exception as e:
-                print(f"⚠️ Error uploading via storage.upload: {str(e)}")
-                print(f"📝 Falling back to base64 data URI...")
-                # Fallback to base64 if upload fails
-                import base64
-                user_base64 = base64.b64encode(user_buffer.getvalue()).decode('utf-8')
-                user_image_url = f"data:image/jpeg;base64,{user_base64}"
-                print(f"✅ User photo encoded as base64 data URI (size: {len(user_base64)} chars)")
+            print(f"📡 Calling fal.ai FLUX.2 LoRA Edit API for scene transformation...")
             
-            # Use Kontext to edit the user's photo based on the prompt
-            # IMPORTANT: Kontext only sees ONE image (image_url), so the prompt should describe
-            # what to CHANGE in that image, not reference "uploaded photo" or "my photo"
-            
-            # Clean up the prompt - remove confusing references since Kontext only sees one image
-            clean_prompt = prompt
-            # Remove references that don't make sense when Kontext only sees one image
-            clean_prompt = clean_prompt.replace("from the uploaded photo", "").replace("from my photo", "").replace("Take my face and body", "Transform this image to show").strip()
-            
-            # If prompt says "place me in", change to "transform to show" (more direct for Kontext)
-            if "place me in" in clean_prompt.lower():
-                clean_prompt = clean_prompt.replace("place me in", "transform to show").replace("Place me in", "Transform to show")
-            
-            # Enhanced prompt that clearly tells Kontext what to do
-            # Kontext needs clear instructions: keep the person, change the scene
-            enhanced_prompt = f"{clean_prompt}. Keep the person's face, body, and physical appearance exactly the same as in this image. Only change the background, scene, environment, and setting. Maintain the same person, same face, same body features, same clothing style."
-            
-            print(f"📡 Calling fal.ai Kontext API to edit your photo...")
-            print(f"📝 Original prompt: {prompt[:80]}...")
-            print(f"📝 Cleaned prompt: {clean_prompt[:80]}...")
-            
-            # Use user's photo as base and edit it according to the prompt
             input_data = {
-                "image_url": user_image_url,  # User photo as base - preserves their appearance
+                "image_urls": [user_image_url],  # Single image
                 "prompt": enhanced_prompt,
-                "num_images": 1,
-                "guidance_scale": 7.5,  # Higher guidance for better prompt following
-                "num_inference_steps": 28,  # More steps for better quality
             }
             
             result = fal_client.subscribe(
-                "fal-ai/flux-pro/kontext",
+                "fal-ai/flux-2/lora/edit",
                 arguments=input_data
             )
-        
-        print(f"📥 Received response from fal.ai")
-        print(f"📋 Response type: {type(result)}")
-        print(f"📋 Response keys: {result.keys() if isinstance(result, dict) else 'Not a dict'}")
         
         # Get the generated image URL
         # Check different possible response structures
