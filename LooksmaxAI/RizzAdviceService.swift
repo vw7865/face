@@ -75,10 +75,24 @@ class RizzAdviceService {
             }
             
             do {
-                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let advice = json["advice"] as? String {
-                    print("✅ Rizz advice received (length: \(advice.count) characters)")
-                    completion(.success(advice))
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    // Check for new structured format (analysis + suggestions)
+                    if let analysis = json["analysis"] as? String, let suggestions = json["suggestions"] as? [[String: Any]] {
+                        // Structured format - return as JSON string for parsing
+                        if let jsonData = try? JSONSerialization.data(withJSONObject: json),
+                           let jsonString = String(data: jsonData, encoding: .utf8) {
+                            print("✅ Rizz advice received (structured format)")
+                            completion(.success(jsonString))
+                            return
+                        }
+                    }
+                    // Fallback to old format (plain advice string)
+                    if let advice = json["advice"] as? String {
+                        print("✅ Rizz advice received (length: \(advice.count) characters)")
+                        completion(.success(advice))
+                    } else {
+                        completion(.failure(NSError(domain: "RizzAdvice", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response format"])))
+                    }
                 } else {
                     completion(.failure(NSError(domain: "RizzAdvice", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response format"])))
                 }
@@ -89,4 +103,6 @@ class RizzAdviceService {
         }.resume()
     }
 }
+
+
 

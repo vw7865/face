@@ -90,7 +90,7 @@ class ScaleManager: ObservableObject {
             return "High Chad/Stacy"
         case 7.5..<7.8:
             return "Adamlite/Evelite"
-        case 7.8..<8.0:
+        case 7.8...8.0:
             return "True Adam/Eve"
         default:
             return "Unknown"
@@ -159,24 +159,71 @@ class ScaleManager: ObservableObject {
         }
     }
     
+    // Helper function to convert gender-neutral labels to gender-specific labels
+    private func makeGenderSpecific(_ label: String, gender: String?) -> String {
+        guard let gender = gender else { return label }
+        let isMale = gender.lowercased() == "male"
+        
+        // Replace gender-neutral labels with gender-specific ones
+        var result = label
+        
+        // HTN/HTB replacements
+        result = result.replacingOccurrences(of: "HTN-/HTB-", with: isMale ? "HTN-" : "HTB-")
+        result = result.replacingOccurrences(of: "HTN/HTB", with: isMale ? "HTN" : "HTB")
+        result = result.replacingOccurrences(of: "HTN+/HTB+", with: isMale ? "HTN+" : "HTB+")
+        
+        // Chad/Stacy replacements
+        result = result.replacingOccurrences(of: "Low Chad/Stacy", with: isMale ? "Low Chad" : "Low Stacy")
+        result = result.replacingOccurrences(of: "Chad/Stacy", with: isMale ? "Chad" : "Stacy")
+        result = result.replacingOccurrences(of: "High Chad/Stacy", with: isMale ? "High Chad" : "High Stacy")
+        result = result.replacingOccurrences(of: "High Chad/True Stacy", with: isMale ? "High Chad" : "True Stacy")
+        
+        // Chadlite/Stacylite replacements
+        result = result.replacingOccurrences(of: "Low CL/SL", with: isMale ? "Low Chadlite" : "Low Stacylite")
+        result = result.replacingOccurrences(of: "CL/SL", with: isMale ? "Chadlite" : "Stacylite")
+        result = result.replacingOccurrences(of: "High CL/SL", with: isMale ? "High Chadlite" : "High Stacylite")
+        result = result.replacingOccurrences(of: "Low Chadlite/Stacylite", with: isMale ? "Low Chadlite" : "Low Stacylite")
+        result = result.replacingOccurrences(of: "Chadlite/Stacylite", with: isMale ? "Chadlite" : "Stacylite")
+        result = result.replacingOccurrences(of: "High Chadlite/Stacylite", with: isMale ? "High Chadlite" : "High Stacylite")
+        
+        // Terrachad/Terrastacy replacements
+        result = result.replacingOccurrences(of: "Terrachad/Terrastacy", with: isMale ? "Terrachad" : "Terrastacy")
+        
+        // Adam/Eve replacements
+        result = result.replacingOccurrences(of: "Adamlite/Evelite", with: isMale ? "Adamlite" : "Evelite")
+        result = result.replacingOccurrences(of: "True Adam/Eve", with: isMale ? "True Adam" : "True Eve")
+        
+        // LTN/LTB replacements
+        result = result.replacingOccurrences(of: "LTN-/LTB-", with: isMale ? "LTN-" : "LTB-")
+        result = result.replacingOccurrences(of: "LTN/LTB", with: isMale ? "LTN" : "LTB")
+        result = result.replacingOccurrences(of: "LTN+/LTB+", with: isMale ? "LTN+" : "LTB+")
+        
+        // MTN/MTB replacements
+        result = result.replacingOccurrences(of: "MTN-/MTB-", with: isMale ? "MTN-" : "MTB-")
+        result = result.replacingOccurrences(of: "MTN/MTB", with: isMale ? "MTN" : "MTB")
+        result = result.replacingOccurrences(of: "MTN+/MTB+", with: isMale ? "MTN+" : "MTB+")
+        
+        return result
+    }
+    
     // Get full display string (score + label)
     // IMPORTANT: PSL Scale and 1-10 Objective Scale are DIFFERENT scales with DIFFERENT category boundaries
     // A person can be "HTN/HTB" on PSL Scale but "Low CL/SL" on 1-10 Objective Scale
     // Each scale has its own independent category system
-    func getFullDisplay(_ psl: Double) -> (score: String, label: String) {
+    func getFullDisplay(_ psl: Double, gender: String? = nil) -> (score: String, label: String) {
         switch selectedScale {
         case .psl:
             // PSL Scale: Convert 0-100 to 0-8, then use PSL Scale categories
             let pslScale = convertToPSLScale(psl)
             let score = String(format: "%.2f", pslScale)
             let label = getPSLScaleLabel(pslScale)  // Uses PSL Scale categories (0-8 range)
-            return (score, label)
+            return (score, makeGenderSpecific(label, gender: gender))
         case .objective:
             // 1-10 Objective Scale: Convert 0-100 to 0-10, then use 1-10 Objective categories
             let objectiveScale = convertToObjectiveScale(psl)
             let score = String(format: "%.1f", objectiveScale)
             let label = getObjectiveScaleLabel(objectiveScale)  // Uses 1-10 Objective categories (0-10 range)
-            return (score, label)
+            return (score, makeGenderSpecific(label, gender: gender))
         }
     }
     

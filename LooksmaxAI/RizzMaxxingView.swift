@@ -18,6 +18,12 @@ struct RizzMaxxingView: View {
     @State private var isAnalyzing = false
     @State private var showResults = false
     @State private var adviceResults: RizzAdviceResults? = nil
+    @State private var isExtractingText = false
+    @State private var extractedText: String = ""
+    @StateObject private var usageTracker = UsageTracker.shared
+    @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @State private var isShowingUpgrade = false
+    @State private var showUpgradeAlert = false
     
     var body: some View {
         NavigationStack {
@@ -32,6 +38,8 @@ struct RizzMaxxingView: View {
             }
             .navigationTitle("RizzMaxxing")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
+            .toolbarVisibility(.hidden, for: .tabBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: {
@@ -43,8 +51,24 @@ struct RizzMaxxingView: View {
                     }
                 }
             }
+            .onDisappear {
+                // Show tab bar when view is dismissed
+                NotificationCenter.default.post(name: NSNotification.Name("ShowTabBar"), object: nil)
+            }
             .sheet(isPresented: $showImagePicker) {
                 ImagePicker(selectedImage: $selectedScreenshot, sourceType: imagePickerSourceType)
+            }
+            .fullScreenCover(isPresented: $isShowingUpgrade) {
+                UpgradeView()
+            }
+            .onChange(of: selectedScreenshot) { oldValue, newValue in
+                // Extract text when a new screenshot is selected
+                if let screenshot = newValue {
+                    extractTextFromImage(screenshot)
+                } else {
+                    // Clear extracted text if screenshot is removed
+                    extractedText = ""
+                }
             }
             .confirmationDialog("Select Screenshot Source", isPresented: $showImageSourceOptions, titleVisibility: .visible) {
                 Button("Photo Library") {
@@ -133,6 +157,24 @@ struct RizzMaxxingView: View {
                         .stroke(Color.white.opacity(0.2), lineWidth: 1)
                 )
             
+            if isExtractingText {
+                HStack {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .cyan))
+                    Text("Extracting text...")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+            } else if !extractedText.isEmpty {
+                HStack {
+                    Image(systemName: "text.bubble.fill")
+                        .foregroundColor(.green)
+                    Text("Text extracted")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                }
+            }
+            
             Button(action: {
                 showImageSourceOptions = true
             }) {
@@ -186,7 +228,7 @@ struct RizzMaxxingView: View {
                 .font(.headline)
                 .foregroundColor(.white)
             
-            Text("Type out your conversation, add context, or explain the situation. This is the main way to get advice if you can't upload a screenshot.")
+            Text("Type out your conversation, add context, or explain the situation. Text from screenshots will be automatically extracted and shown here (you can edit it).")
                 .font(.caption)
                 .foregroundColor(.gray)
             
@@ -219,27 +261,62 @@ struct RizzMaxxingView: View {
     }
     
     private var analyzeButton: some View {
-        Button(action: {
-            analyzeConversation()
-        }) {
-            HStack {
-                if isAnalyzing {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                } else {
-                    Image(systemName: "sparkles")
-                    Text("Get Advice")
+        VStack(spacing: 12) {
+            // Show usage limit for free users
+            if !subscriptionManager.isPro && usageTracker.hasUsedRizzCoach() {
+                VStack(spacing: 8) {
+                    Text("You've used your free Rizz Coach analysis")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    Text("Upgrade to Pro for unlimited advice")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                    Button(action: {
+                        isShowingUpgrade = true
+                    }) {
+                        Text("Upgrade to Pro")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(Color.red)
+                            .cornerRadius(10)
+                    }
                 }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.white.opacity(0.1))
+                )
+                .padding(.horizontal)
             }
-            .font(.headline)
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(buttonBackground)
+            
+            Button(action: {
+                if usageTracker.canUseRizzCoach() {
+                    analyzeConversation()
+                } else {
+                    isShowingUpgrade = true
+                }
+            }) {
+                HStack {
+                    if isAnalyzing {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    } else {
+                        Image(systemName: "sparkles")
+                        Text("Get Advice")
+                    }
+                }
+                .font(.headline)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(buttonBackground)
+            }
+            .disabled((selectedScreenshot == nil && contextText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || isAnalyzing || (!subscriptionManager.isPro && usageTracker.hasUsedRizzCoach()))
+            .padding(.horizontal)
+            .padding(.bottom, 30)
         }
-        .disabled((selectedScreenshot == nil && contextText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || isAnalyzing)
-        .padding(.horizontal)
-        .padding(.bottom, 30)
     }
     
     private var buttonBackground: some View {
@@ -264,6 +341,33 @@ struct RizzMaxxingView: View {
         }
     }
     
+    private func extractTextFromImage(_ image: UIImage) {
+        isExtractingText = true
+        extractedText = ""
+        
+        TextRecognitionService.shared.recognizeText(in: image) { result in
+            DispatchQueue.main.async {
+                self.isExtractingText = false
+                
+                switch result {
+                case .success(let text):
+                    self.extractedText = text
+                    // Pre-fill contextText with extracted text, but append if there's already text
+                    if self.contextText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        self.contextText = text
+                    } else {
+                        // If user already typed something, append extracted text
+                        self.contextText = self.contextText + "\n\n" + text
+                    }
+                case .failure(let error):
+                    print("❌ Failed to extract text: \(error.localizedDescription)")
+                    // Don't show error to user, just continue without extracted text
+                    self.extractedText = ""
+                }
+            }
+        }
+    }
+    
     private func analyzeConversation() {
         // Require at least one input method
         let hasScreenshot = selectedScreenshot != nil
@@ -273,16 +377,12 @@ struct RizzMaxxingView: View {
         
         isAnalyzing = true
         
-        // Build input text from screenshot (if any) and context
+        // Use the contextText which should already contain extracted text if available
         var inputText = contextText.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // If screenshot exists, add note about it (OCR would be done on backend in production)
-        if hasScreenshot {
-            if !inputText.isEmpty {
-                inputText = "Screenshot of conversation attached. " + inputText
-            } else {
-                inputText = "Screenshot of conversation attached. Please analyze this conversation and provide blackpill dating advice."
-            }
+        // If we have a screenshot but no text was extracted or entered, provide a fallback
+        if hasScreenshot && inputText.isEmpty {
+            inputText = "Please analyze this conversation screenshot and provide blackpill dating advice."
         }
         
         // Call the API
@@ -292,26 +392,65 @@ struct RizzMaxxingView: View {
                 
                 switch result {
                 case .success(let advice):
-                    // Convert advice string to RizzAdviceResults
-                    // For now, create a simple result structure
-                    let analysis = ConversationAnalysis(
-                        tone: "Analyzed",
-                        vibe: "Blackpill perspective",
-                        interestLevel: .unclear,
-                        redFlags: [],
-                        greenFlags: [],
-                        overallAssessment: advice
-                    )
+                    // Increment usage counter (only for free users)
+                    usageTracker.incrementRizzCoach()
                     
-                    // Create response suggestions from the advice
-                    let suggestions = parseAdviceToSuggestions(advice)
-                    
-                    self.adviceResults = RizzAdviceResults(
-                        analysis: analysis,
-                        responseSuggestions: suggestions,
-                        tips: extractTips(advice),
-                        interestLevel: .unclear
-                    )
+                    // Try to parse as structured JSON first
+                    if let jsonData = advice.data(using: .utf8),
+                       let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                       let analysisText = json["analysis"] as? String,
+                       let suggestionsArray = json["suggestions"] as? [[String: Any]] {
+                        // Structured format - parse properly
+                        let analysis = ConversationAnalysis(
+                            tone: "Analyzed",
+                            vibe: "Blackpill perspective",
+                            interestLevel: .unclear,
+                            redFlags: [],
+                            greenFlags: [],
+                            overallAssessment: analysisText
+                        )
+                        
+                        // Parse structured suggestions
+                        let suggestions = suggestionsArray.compactMap { suggestionDict -> ResponseSuggestion? in
+                            guard let reply = suggestionDict["reply"] as? String,
+                                  let tone = suggestionDict["tone"] as? String,
+                                  let why = suggestionDict["why"] as? String else {
+                                return nil
+                            }
+                            return ResponseSuggestion(
+                                text: reply,
+                                tone: tone,
+                                reasoning: why
+                            )
+                        }
+                        
+                        self.adviceResults = RizzAdviceResults(
+                            analysis: analysis,
+                            responseSuggestions: suggestions.isEmpty ? parseAdviceToSuggestions(analysisText) : suggestions,
+                            tips: extractTips(analysisText),
+                            interestLevel: .unclear
+                        )
+                    } else {
+                        // Fallback to old format (plain text)
+                        let analysis = ConversationAnalysis(
+                            tone: "Analyzed",
+                            vibe: "Blackpill perspective",
+                            interestLevel: .unclear,
+                            redFlags: [],
+                            greenFlags: [],
+                            overallAssessment: advice
+                        )
+                        
+                        // Create response suggestions from the advice
+                        let suggestions = parseAdviceToSuggestions(advice)
+                        
+                        self.adviceResults = RizzAdviceResults(
+                            analysis: analysis,
+                            responseSuggestions: suggestions,
+                            tips: extractTips(advice),
+                            interestLevel: .unclear
+                        )
+                    }
                     self.showResults = true
                     
                 case .failure(let error):
@@ -496,7 +635,7 @@ struct RizzAdviceResultsView: View {
                 
                 // Main Advice Section
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Blackpill Advice")
+                    Text("Chad's advice")
                         .font(.headline)
                         .foregroundColor(.white)
                     

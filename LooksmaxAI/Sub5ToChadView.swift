@@ -21,6 +21,8 @@ struct Sub5ToChadView: View {
     @StateObject private var usageTracker = UsageTracker.shared
     @StateObject private var subscriptionManager = SubscriptionManager.shared
     @State private var isShowingUpgrade = false
+    @State private var isShowingCreditPurchase = false
+    @State private var showOutOfCreditsAlert = false
     
     // Photo step enum
     private enum PhotoStep {
@@ -66,6 +68,13 @@ struct Sub5ToChadView: View {
             .navigationBarBackButtonHidden(true)
             .toolbarVisibility(.hidden, for: .tabBar)
             .toolbar {
+                // Credit balance display (Pro users only)
+                if subscriptionManager.isPro {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        CreditBalanceView(showCreditPurchase: $isShowingCreditPurchase)
+                    }
+                }
+                
                 // Only show back button when NOT showing results
                 if generatedChadImage == nil {
                     ToolbarItem(placement: .navigationBarLeading) {
@@ -119,6 +128,17 @@ struct Sub5ToChadView: View {
             }
             .fullScreenCover(isPresented: $isShowingUpgrade) {
                 UpgradeView()
+            }
+            .fullScreenCover(isPresented: $isShowingCreditPurchase) {
+                CreditPurchaseView()
+            }
+            .alert("Out of Credits", isPresented: $showOutOfCreditsAlert) {
+                Button("Continue") {
+                    isShowingCreditPurchase = true
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("Purchase credits to continue")
             }
         }
     }
@@ -306,6 +326,24 @@ struct Sub5ToChadView: View {
     
     // MARK: - Helper Functions
     private func generateChadVersion(frontImage: UIImage, sideImage: UIImage, gender: String) {
+        // Check if user has credits
+        guard usageTracker.canUseImageGeneration() else {
+            if !subscriptionManager.isPro {
+                isShowingUpgrade = true
+            } else {
+                errorMessage = "You've used all your monthly credits. Purchase more credits to continue generating images."
+                showError = true
+            }
+            return
+        }
+        
+        // Deduct credit before generation
+        guard usageTracker.useImageGenerationCredit() else {
+            errorMessage = "Failed to deduct credit. Please try again."
+            showError = true
+            return
+        }
+        
         isGenerating = true
         errorMessage = nil
         
@@ -321,6 +359,8 @@ struct Sub5ToChadView: View {
                 case .success(let chadImage):
                     generatedChadImage = chadImage
                 case .failure(let error):
+                    // Refund credit on failure
+                    usageTracker.addImageGenerationCredits(1)
                     errorMessage = error.localizedDescription
                     showError = true
                 }
@@ -337,6 +377,41 @@ struct Sub5ToChadView: View {
         generatedChadImage = nil
         errorMessage = nil
         showError = false
+    }
+}
+
+// MARK: - Credit Balance View
+struct CreditBalanceView: View {
+    @StateObject private var usageTracker = UsageTracker.shared
+    @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @Binding var showCreditPurchase: Bool
+    
+    var body: some View {
+        if subscriptionManager.isPro {
+            Button(action: {
+                showCreditPurchase = true
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 12))
+                        .foregroundColor(.cyan)
+                    Text("\(usageTracker.getImageGenerationCreditsRemaining()) Credits")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(Color.cyan.opacity(0.2))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.cyan.opacity(0.4), lineWidth: 1)
+                        )
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
     }
 }
 

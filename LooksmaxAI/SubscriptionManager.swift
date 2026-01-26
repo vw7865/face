@@ -11,53 +11,226 @@ import StoreKit
 class SubscriptionManager: ObservableObject {
     static let shared = SubscriptionManager()
     
-    @Published var isUnlocked: Bool = false
+    @Published var isPro: Bool = false
     @Published var isLoading: Bool = false
+    @Published var products: [Product] = []
+    @Published var isLoadingProducts: Bool = false
+    @Published var currentSubscription: Product.SubscriptionInfo.Status?
+    @Published var subscriptionExpirationDate: Date?
+    @Published var activeProductID: String?
     
-    private let unlockKey = "com.looksmaxai.unlocked"
-    private let subscriptionProductID = "com.looksmaxai.pro"
+    // Product IDs from App Store Connect
+    private let weeklyProductID = "com.facemaxxing.LooksmaxAI.Weekly"
+    private let yearlyProductID = "com.facemaxxing.LooksmaxAI.Yearly"
+    
+    private var updateListenerTask: Task<Void, Error>?
     
     private init() {
-        // Always unlocked - show all results for free
-        isUnlocked = true
-        UserDefaults.standard.set(true, forKey: unlockKey)
+        // Start listening for subscription updates
+        updateListenerTask = listenForTransactions()
+        loadProducts()
+        checkSubscriptionStatus()
     }
     
-    func loadUnlockStatus() {
-        // Always return true - everything is free
-        isUnlocked = true
+    deinit {
+        updateListenerTask?.cancel()
     }
     
-    func unlockResults() {
-        // In production, implement StoreKit for in-app purchases
-        // For now, this is a placeholder that can be activated for testing
-        
-        // Option 1: Simple unlock (for testing)
-        // UserDefaults.standard.set(true, forKey: unlockKey)
-        // isUnlocked = true
-        
-        // Option 2: Show subscription sheet
-        showSubscriptionSheet()
-    }
-    
-    private func showSubscriptionSheet() {
-        // Implement StoreKit subscription flow
-        // For now, show an alert or sheet
-        isLoading = true
-        
-        // Simulate subscription process
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            // In production, verify purchase with App Store
-            UserDefaults.standard.set(true, forKey: self.unlockKey)
-            self.isUnlocked = true
-            self.isLoading = false
+    // MARK: - StoreKit Transaction Listener
+    private func listenForTransactions() -> Task<Void, Error> {
+        return Task.detached {
+            for await result in Transaction.updates {
+                do {
+                    let transaction = try self.checkVerified(result)
+                    await transaction.finish()
+                    await MainActor.run {
+                        self.checkSubscriptionStatus()
+                    }
+                } catch {
+                    print("❌ Transaction verification failed: \(error)")
+                }
+            }
         }
     }
     
-    func checkSubscriptionStatus() {
-        // Check with App Store receipt validation
-        // For now, just check UserDefaults
-        loadUnlockStatus()
+    private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
+        switch result {
+        case .unverified:
+            throw StoreError.failedVerification
+        case .verified(let safe):
+            return safe
+        }
     }
+    
+    func loadProducts() {
+        guard !isLoadingProducts else { return } // Prevent multiple simultaneous loads
+        isLoadingProducts = true
+        Task {
+            do {
+                let productIDs = [weeklyProductID, yearlyProductID]
+                let storeProducts = try await Product.products(for: productIDs)
+                
+                await MainActor.run {
+                    self.products = storeProducts
+                    self.isLoadingProducts = false
+                    print("✅ Loaded \(storeProducts.count) products from App Store")
+                }
+            } catch {
+                await MainActor.run {
+                    self.isLoadingProducts = false
+                    print("❌ Error loading products: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    func getProduct(for productID: String) -> Product? {
+        return products.first { $0.id == productID }
+    }
+    
+    func getWeeklyProduct() -> Product? {
+        return getProduct(for: weeklyProductID)
+    }
+    
+    func getYearlyProduct() -> Product? {
+        return getProduct(for: yearlyProductID)
+    }
+    
+    // MARK: - Subscription Status
+    func checkSubscriptionStatus() {
+        Task {
+            await updateSubscriptionStatus()
+        }
+    }
+    
+    @MainActor
+    private func updateSubscriptionStatus() async {
+        // Start with false - user is NOT Pro by default
+        var isCurrentlySubscribed = false
+        
+        print("🔍 [Subscription Check] Starting subscription status check...")
+        print("🔍 [Subscription Check] isPro initial value: \(isPro)")
+        print("🔍 [Subscription Check] Checking for product IDs: \(weeklyProductID), \(yearlyProductID)")
+        
+        var transactionCount = 0
+        var foundTransactions: [String] = []
+        
+        // Check current entitlements from StoreKit
+        for await result in Transaction.currentEntitlements {
+            transactionCount += 1
+            do {
+                let transaction = try checkVerified(result)
+                foundTransactions.append(transaction.productID)
+                
+                print("🔍 [Subscription Check] Found transaction #\(transactionCount):")
+                print("   - Product ID: \(transaction.productID)")
+                print("   - Transaction ID: \(transaction.id)")
+                
+                // Check if transaction is for our subscription products
+                if transaction.productID == weeklyProductID || transaction.productID == yearlyProductID {
+                    print("   ✅ Matches our subscription products!")
+                    
+                    // Check if subscription is still active
+                    if let expirationDate = transaction.expirationDate {
+                        print("   - Expiration Date: \(expirationDate)")
+                        print("   - Current Date: \(Date())")
+                        print("   - Is Expired: \(expirationDate <= Date())")
+                        
+                        if expirationDate > Date() {
+                            print("   ✅ Subscription is ACTIVE (not expired)")
+                            isCurrentlySubscribed = true
+                            await MainActor.run {
+                                self.subscriptionExpirationDate = expirationDate
+                                self.activeProductID = transaction.productID
+                            }
+                            break
+                        } else {
+                            print("   ⚠️ Subscription is EXPIRED")
+                        }
+                    } else {
+                        // Non-expiring subscription (shouldn't happen with auto-renewable, but handle it)
+                        print("   ⚠️ No expiration date (unusual for auto-renewable)")
+                        isCurrentlySubscribed = true
+                        await MainActor.run {
+                            self.subscriptionExpirationDate = nil
+                            self.activeProductID = transaction.productID
+                        }
+                        break
+                    }
+                } else {
+                    print("   ❌ Not a subscription product (ignoring)")
+                }
+            } catch {
+                print("❌ [Subscription Check] Error checking entitlement: \(error)")
+            }
+        }
+        
+        print("🔍 [Subscription Check] Total transactions found: \(transactionCount)")
+        print("🔍 [Subscription Check] Found product IDs: \(foundTransactions)")
+        print("🔍 [Subscription Check] isCurrentlySubscribed: \(isCurrentlySubscribed)")
+        
+        if !isCurrentlySubscribed {
+            await MainActor.run {
+                self.subscriptionExpirationDate = nil
+                self.activeProductID = nil
+            }
+            print("🔍 [Subscription Check] No active subscription found - clearing subscription data")
+        }
+        
+        // CRITICAL: Only set isPro to true if we verified an active subscription
+        // Default is false - users must pay to access Pro features
+        print("🔍 [Subscription Check] Setting isPro = \(isCurrentlySubscribed)")
+        isPro = isCurrentlySubscribed
+        print("📱 Subscription status: \(isPro ? "Pro" : "Free")")
+        if let expiration = subscriptionExpirationDate {
+            print("📅 Subscription expires: \(expiration)")
+        } else {
+            print("📅 No subscription expiration date")
+        }
+        
+        // Reset credits when subscription renews (if Pro)
+        if isPro {
+            print("🔍 [Subscription Check] User is Pro - checking credits reset")
+            UsageTracker.shared.checkAndResetCreditsIfNeeded()
+        } else {
+            print("🔍 [Subscription Check] User is Free - credits should be cleared")
+        }
+        
+        // Notify other components of subscription status change
+        NotificationCenter.default.post(name: NSNotification.Name("SubscriptionStatusChanged"), object: nil)
+    }
+    
+    // MARK: - Purchase
+    func purchase(_ product: Product) async throws -> Transaction? {
+        let result = try await product.purchase()
+        
+        switch result {
+        case .success(let verification):
+            let transaction = try checkVerified(verification)
+            await transaction.finish()
+            await updateSubscriptionStatus()
+            return transaction
+        case .userCancelled:
+            return nil
+        case .pending:
+            // Transaction is pending (e.g., waiting for parental approval)
+            // StoreKit will deliver it via Transaction.updates when ready
+            print("⏳ Purchase pending - will be delivered via Transaction.updates")
+            return nil
+        @unknown default:
+            return nil
+        }
+    }
+    
+    // MARK: - Restore Purchases
+    func restorePurchases() async {
+        try? await AppStore.sync()
+        await updateSubscriptionStatus()
+    }
+}
+
+// MARK: - Store Error
+enum StoreError: Error {
+    case failedVerification
 }
 

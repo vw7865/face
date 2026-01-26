@@ -13,13 +13,76 @@ struct ContentView: View {
     @AppStorage("lastAnalysisResults") private var lastAnalysisResultsData: Data?
     @State private var selectedTab = 0
     @State private var directResults: FaceAnalysisResults? = nil
+    @State private var directResultsGender: String? = nil
+    @State private var directResultsThumbnailPath: String? = nil
+    @State private var directResultsThumbnailImage: UIImage? = nil
+    @Environment(\.scenePhase) private var scenePhase
+    
+    init() {
+        // Migrate thumbnail paths on app launch
+        ResultHistoryManager.shared.migrateThumbnailPaths()
+        
+        // Check subscription status on app launch
+        SubscriptionManager.shared.checkSubscriptionStatus()
+        
+        // Configure tab bar appearance to maintain consistent color
+        // Use a dark gray color that's not pure black to avoid it turning black
+        let appearance = UITabBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        
+        // Use a dark gray color (RGB: 28, 28, 30) which is the standard iOS dark background
+        // This ensures the tab bar stays consistent and doesn't turn pure black
+        appearance.backgroundColor = UIColor(red: 28/255.0, green: 28/255.0, blue: 30/255.0, alpha: 1.0)
+        
+        // Set the standard appearance for all tab bars with blur effect (glassmorphism)
+        appearance.configureWithDefaultBackground()
+        appearance.backgroundColor = UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 0.95) // Dark gray with slight transparency
+        
+        // Add shadow for depth
+        appearance.shadowColor = UIColor.black.withAlphaComponent(0.3)
+        appearance.shadowImage = UIImage()
+        
+        // Configure selection colors
+        appearance.selectionIndicatorTintColor = UIColor.systemBlue
+        appearance.stackedLayoutAppearance.selected.iconColor = UIColor.systemBlue
+        appearance.stackedLayoutAppearance.selected.titleTextAttributes = [.foregroundColor: UIColor.systemBlue]
+        appearance.stackedLayoutAppearance.normal.iconColor = UIColor.gray
+        appearance.stackedLayoutAppearance.normal.titleTextAttributes = [.foregroundColor: UIColor.gray]
+        
+        UITabBar.appearance().standardAppearance = appearance
+        if #available(iOS 15.0, *) {
+            UITabBar.appearance().scrollEdgeAppearance = appearance
+        }
+        
+        // Use filled icons and add selection indicator
+        UITabBar.appearance().tintColor = UIColor.systemBlue
+        UITabBar.appearance().unselectedItemTintColor = UIColor.gray
+    }
     
     var body: some View {
         TabView(selection: $selectedTab) {
-            RateView(onAnalysisComplete: { results in
+            RateView(onAnalysisComplete: { results, gender in
                 // Store results and switch tab
-                print("🔄 onAnalysisComplete called with results, PSL: \(results.overall.psl ?? 0)")
+                print("🔄 onAnalysisComplete called with results, PSL: \(results.overall.psl ?? 0), gender: \(gender ?? "nil")")
                 directResults = results
+                
+                // Get the latest result from history to get gender, thumbnail path and image
+                // This ensures we get the gender that was actually saved (not nil from callback)
+                let history = ResultHistoryManager.shared.loadHistory()
+                if let latestItem = history.first {
+                    // Use gender from history (it's guaranteed to be saved there)
+                    directResultsGender = latestItem.gender ?? gender
+                    directResultsThumbnailPath = latestItem.thumbnailPath
+                    // Load thumbnail image immediately for instant display
+                    if let path = latestItem.thumbnailPath {
+                        directResultsThumbnailImage = ResultHistoryManager.shared.loadThumbnail(for: path)
+                        print("📸 ContentView: Loaded thumbnail image: \(directResultsThumbnailImage != nil ? "success" : "failed"), path: \(path), gender: \(directResultsGender ?? "nil")")
+                    }
+                } else {
+                    // Fallback to gender from callback if history not available yet
+                    directResultsGender = gender
+                }
+                
                 // Switch to Results tab after analysis
                 DispatchQueue.main.async {
                     selectedTab = 1
@@ -38,8 +101,11 @@ struct ContentView: View {
                         print("🔄 Close button tapped, returning to list")
                         // Update state immediately (we're already on main thread from button tap)
                         directResults = nil
+                        directResultsGender = nil
+                        directResultsThumbnailPath = nil
+                        directResultsThumbnailImage = nil
                         print("🔄 directResults set to nil, should show ResultsListView now")
-                    })
+                    }, gender: directResultsGender, thumbnailPath: directResultsThumbnailPath, thumbnailImage: directResultsThumbnailImage)
                 } else {
                     // Show results list
                     ResultsListView()
@@ -63,6 +129,15 @@ struct ContentView: View {
                 }
                 .tag(3)
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SwitchToRateTab"))) { _ in
+            selectedTab = 0
+        }
+        .onChange(of: scenePhase) { newPhase in
+            // Check subscription status when app becomes active
+            if newPhase == .active {
+                SubscriptionManager.shared.checkSubscriptionStatus()
+            }
+        }
     }
 }
 
@@ -72,7 +147,7 @@ enum PhotoStep {
 }
 
 struct RateView: View {
-    let onAnalysisComplete: (FaceAnalysisResults) -> Void
+    let onAnalysisComplete: (FaceAnalysisResults, String?) -> Void
     @State private var showGenderSelection = false
     @State private var selectedGender: String? = nil
     @State private var currentPhotoStep: PhotoStep? = nil
@@ -82,11 +157,22 @@ struct RateView: View {
     @State private var analysisResults: FaceAnalysisResults? = nil
     @State private var errorMessage: String? = nil
     @State private var showError = false
+    @State private var showUpgradePrompt = false
+    @StateObject private var usageTracker = UsageTracker.shared
+    @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @State private var isShowingUpgrade = false
     @AppStorage("lastAnalysisResults") private var lastAnalysisResultsData: Data?
+    
+    // Detect if device is iPhone (not iPad)
+    private var isIPhone: Bool {
+        UIDevice.current.userInterfaceIdiom == .phone
+    }
     
     var body: some View {
         NavigationStack {
             ZStack {
+                Color.black.ignoresSafeArea()
+                
                 if isAnalyzing {
                     VStack(spacing: 20) {
                         ProgressView()
@@ -98,61 +184,296 @@ struct RateView: View {
                         Text("This may take 30-60 seconds")
                             .font(.caption)
                             .foregroundColor(.gray.opacity(0.7))
-                        Text("(Server is starting up)")
-                            .font(.caption2)
-                            .foregroundColor(.gray.opacity(0.5))
                     }
                     .transition(.opacity)
                 } else if !showGenderSelection && currentPhotoStep == nil {
-                    VStack {
-                        Text("Get Your Face Rating")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                            .padding()
-                        
-                        Button(action: {
-                            showGenderSelection = true
-                        }) {
-                            Text("Begin")
-                                .font(.headline)
+                    // Static view for iPhone, ScrollView for iPad
+                    if isIPhone {
+                        VStack(spacing: isIPhone ? 16 : 30) {
+                            // Headline
+                            VStack(spacing: isIPhone ? 6 : 12) {
+                                Text("Discover Your True Rating")
+                                    .font(.system(size: isIPhone ? 26 : 36, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white)
+                                
+                                HStack(spacing: 4) {
+                                    Image(systemName: "brain.head.profile")
+                                        .font(.system(size: isIPhone ? 10 : 12, weight: .medium))
+                                    Text("Powered by AI")
+                                        .font(.system(size: isIPhone ? 11 : 14, weight: .medium, design: .rounded))
+                                    Text("·")
+                                        .font(.system(size: isIPhone ? 11 : 14, weight: .medium))
+                                    Text("Analyzed with Precision")
+                                        .font(.system(size: isIPhone ? 11 : 14, weight: .medium, design: .rounded))
+                                }
+                                .foregroundColor(.gray.opacity(0.7))
+                            }
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                            .padding(.top, isIPhone ? 20 : 40)
+                            
+                            // Subheadline
+                            Text("AI-powered facial analysis for accurate and personalized insights.")
+                                .font(.system(size: isIPhone ? 14 : 19, weight: .regular))
+                                .foregroundColor(Color(red: 0.8, green: 0.8, blue: 0.8))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                                .padding(.top, isIPhone ? 4 : 8)
+                            
+                            // Key Features with card-style layout
+                            VStack(spacing: isIPhone ? 10 : 16) {
+                                RateFeatureRow(icon: "chart.bar.fill", text: "50+ facial metrics analyzed", keyTerm: "50+ facial metrics")
+                                RateFeatureRow(icon: "star.fill", text: "PSL & Objective scale ratings", keyTerm: "PSL & Objective")
+                                RateFeatureRow(icon: "lightbulb.fill", text: "Personalized looksmaxxing advice", keyTerm: "Personalized")
+                            }
+                            .padding(.horizontal, isIPhone ? 20 : 40)
+                            .padding(.top, isIPhone ? 12 : 20)
+                            
+                            // Usage indicator for free users
+                            if !subscriptionManager.isPro {
+                                let remaining = usageTracker.getFaceRatingRemaining()
+                                if remaining > 0 {
+                                    Text("\(remaining) free rating\(remaining == 1 ? "" : "s") remaining")
+                                        .font(.system(size: isIPhone ? 11 : 14))
+                                        .foregroundColor(.gray)
+                                        .padding(.top, isIPhone ? 4 : 8)
+                                } else {
+                                    VStack(spacing: isIPhone ? 6 : 8) {
+                                        Text("You've used all free ratings")
+                                            .font(.system(size: isIPhone ? 14 : 16))
+                                            .foregroundColor(.white)
+                                        Text("Upgrade to Pro for unlimited ratings")
+                                            .font(.system(size: isIPhone ? 11 : 14))
+                                            .foregroundColor(.gray)
+                                        Button(action: {
+                                            isShowingUpgrade = true
+                                        }) {
+                                            Text("Upgrade to Pro")
+                                                .font(.system(size: isIPhone ? 14 : 16))
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, isIPhone ? 20 : 24)
+                                                .padding(.vertical, isIPhone ? 10 : 12)
+                                                .background(Color.red)
+                                                .cornerRadius(10)
+                                        }
+                                        .padding(.top, isIPhone ? 4 : 8)
+                                    }
+                                    .padding(isIPhone ? 12 : 16)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(Color.white.opacity(0.1))
+                                    )
+                                    .padding(.horizontal, isIPhone ? 20 : 40)
+                                    .padding(.top, isIPhone ? 12 : 20)
+                                }
+                            }
+                            
+                            // Begin Button with gradient and icon
+                            Button(action: {
+                                if usageTracker.canUseFaceRating() {
+                                    showGenderSelection = true
+                                } else {
+                                    isShowingUpgrade = true
+                                }
+                            }) {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "arrow.right.circle.fill")
+                                        .font(.system(size: isIPhone ? 16 : 20, weight: .semibold))
+                                    Text("Start My Analysis")
+                                        .font(.system(size: isIPhone ? 16 : 18, weight: .semibold))
+                                }
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.blue)
-                                .cornerRadius(10)
+                                .padding(.vertical, isIPhone ? 14 : 16)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Color.blue, Color.cyan],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .cornerRadius(14)
+                                .shadow(color: Color.blue.opacity(0.4), radius: 12, x: 0, y: 6)
+                            }
+                            .padding(.horizontal, isIPhone ? 20 : 40)
+                            .padding(.top, isIPhone ? 16 : 30)
+                            .padding(.bottom, isIPhone ? 20 : 40)
+                            
+                            Spacer()
                         }
-                        .padding(.horizontal)
+                    } else {
+                        ScrollView {
+                            VStack(spacing: 30) {
+                                // Headline
+                                VStack(spacing: 12) {
+                                    Text("Discover Your True Rating")
+                                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                                        .foregroundColor(.white)
+                                    
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "brain.head.profile")
+                                            .font(.system(size: 12, weight: .medium))
+                                        Text("Powered by AI")
+                                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                                        Text("·")
+                                            .font(.system(size: 14, weight: .medium))
+                                        Text("Analyzed with Precision")
+                                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                                    }
+                                    .foregroundColor(.gray.opacity(0.7))
+                                }
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                                .padding(.top, 40)
+                                
+                                // Subheadline
+                                Text("AI-powered facial analysis for accurate and personalized insights.")
+                                    .font(.system(size: 19, weight: .regular))
+                                    .foregroundColor(Color(red: 0.8, green: 0.8, blue: 0.8))
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal)
+                                    .padding(.top, 8)
+                                
+                                // Key Features with card-style layout
+                                VStack(spacing: 16) {
+                                    RateFeatureRow(icon: "chart.bar.fill", text: "50+ facial metrics analyzed", keyTerm: "50+ facial metrics")
+                                    RateFeatureRow(icon: "star.fill", text: "PSL & Objective scale ratings", keyTerm: "PSL & Objective")
+                                    RateFeatureRow(icon: "lightbulb.fill", text: "Personalized looksmaxxing advice", keyTerm: "Personalized")
+                                }
+                                .padding(.horizontal, 40)
+                                .padding(.top, 20)
+                                
+                                // Usage indicator for free users
+                                if !subscriptionManager.isPro {
+                                    let remaining = usageTracker.getFaceRatingRemaining()
+                                    if remaining > 0 {
+                                        Text("\(remaining) free rating\(remaining == 1 ? "" : "s") remaining")
+                                            .font(.subheadline)
+                                            .foregroundColor(.gray)
+                                            .padding(.top, 8)
+                                    } else {
+                                        VStack(spacing: 8) {
+                                            Text("You've used all free ratings")
+                                                .font(.headline)
+                                                .foregroundColor(.white)
+                                            Text("Upgrade to Pro for unlimited ratings")
+                                                .font(.subheadline)
+                                                .foregroundColor(.gray)
+                                            Button(action: {
+                                                isShowingUpgrade = true
+                                            }) {
+                                                Text("Upgrade to Pro")
+                                                    .font(.headline)
+                                                    .foregroundColor(.white)
+                                                    .padding(.horizontal, 24)
+                                                    .padding(.vertical, 12)
+                                                    .background(Color.red)
+                                                    .cornerRadius(10)
+                                            }
+                                            .padding(.top, 8)
+                                        }
+                                        .padding()
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .fill(Color.white.opacity(0.1))
+                                        )
+                                        .padding(.horizontal, 40)
+                                        .padding(.top, 20)
+                                    }
+                                }
+                                
+                                // Begin Button with gradient and icon
+                                Button(action: {
+                                    if usageTracker.canUseFaceRating() {
+                                        showGenderSelection = true
+                                    } else {
+                                        isShowingUpgrade = true
+                                    }
+                                }) {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: "arrow.right.circle.fill")
+                                            .font(.system(size: 20, weight: .semibold))
+                                        Text("Start My Analysis")
+                                            .font(.system(size: 18, weight: .semibold))
+                                    }
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                                    .background(
+                                        LinearGradient(
+                                            colors: [Color.blue, Color.cyan],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                                    .cornerRadius(14)
+                                    .shadow(color: Color.blue.opacity(0.4), radius: 12, x: 0, y: 6)
+                                }
+                                .padding(.horizontal, 40)
+                                .padding(.top, 30)
+                                .padding(.bottom, 40)
+                            }
+                        }
                     }
                 } else if showGenderSelection && currentPhotoStep == nil {
-                    VStack(spacing: 20) {
+                    VStack(spacing: 30) {
                         Text("Select Your Gender")
                             .font(.title2)
                             .fontWeight(.semibold)
+                            .foregroundColor(.white)
                             .padding(.top)
                         
-                        HStack(spacing: 20) {
+                        HStack(spacing: 30) {
+                            // Male button
                             Button(action: {
                                 selectedGender = "Male"
                             }) {
-                                Text("Male")
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(selectedGender == "Male" ? Color.blue : Color.gray)
-                                    .cornerRadius(10)
+                                VStack(spacing: 12) {
+                                    Image("man")
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(width: 120, height: 120)
+                                    
+                                    Text("Male")
+                                        .font(.headline)
+                                        .foregroundColor(.white)
+                                }
+                                .padding(20)
+                                .background(Color.black)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(
+                                            selectedGender == "Male" ? Color.blue : Color.clear,
+                                            lineWidth: 3
+                                        )
+                                )
+                                .cornerRadius(12)
                             }
                             
+                            // Female button
                             Button(action: {
                                 selectedGender = "Female"
                             }) {
-                                Text("Female")
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(selectedGender == "Female" ? Color.blue : Color.gray)
-                                    .cornerRadius(10)
+                                VStack(spacing: 12) {
+                                    Image("woman")
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(width: 120, height: 120)
+                                    
+                                    Text("Female")
+                                        .font(.headline)
+                                        .foregroundColor(.white)
+                                }
+                                .padding(20)
+                                .background(Color.black)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(
+                                            selectedGender == "Female" ? Color.blue : Color.clear,
+                                            lineWidth: 3
+                                        )
+                                )
+                                .cornerRadius(12)
                             }
                         }
                         .padding(.horizontal)
@@ -173,6 +494,8 @@ struct RateView: View {
                             .padding(.top)
                         }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black)
                 } else if currentPhotoStep == .front {
                     PhotoSelectionView(
                         gender: selectedGender ?? "Male",
@@ -189,10 +512,52 @@ struct RateView: View {
                         title: "Take a side profile selfie",
                         selectedImage: $sideImage,
                         onContinue: {
-                            analyzeFaces()
+                            if usageTracker.canUseFaceRating() {
+                                analyzeFaces()
+                            } else {
+                                isShowingUpgrade = true
+                            }
                         },
                         isSideProfile: true
                     )
+                }
+            }
+            .navigationTitle("Mogged")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                // Show back button and start over when user has progressed past initial screen
+                if showGenderSelection || currentPhotoStep != nil {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button(action: {
+                            if let step = currentPhotoStep {
+                                // Go back to previous step
+                                if step == .side {
+                                    currentPhotoStep = .front
+                                } else if step == .front {
+                                    currentPhotoStep = nil
+                                    showGenderSelection = true
+                                }
+                            } else if showGenderSelection {
+                                // Go back to initial screen
+                                showGenderSelection = false
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                Text("Back")
+                            }
+                            .foregroundColor(.white)
+                        }
+                    }
+                    
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(action: {
+                            resetRateView()
+                        }) {
+                            Text("Start Over")
+                                .foregroundColor(.red)
+                        }
+                    }
                 }
             }
         }
@@ -208,6 +573,9 @@ struct RateView: View {
             }
         } message: {
             Text(errorMessage ?? "An unknown error occurred. Please try again.")
+        }
+        .fullScreenCover(isPresented: $isShowingUpgrade) {
+            UpgradeView()
         }
     }
     
@@ -246,10 +614,13 @@ struct RateView: View {
         case .success(let results):
             print("✅ Analysis successful, PSL: \(results.overall.psl ?? 0)")
             
+            // Increment usage counter (only for free users)
+            usageTracker.incrementFaceRating()
+            
             // Save results first
             analysisResults = results
             saveResults(results)
-            ResultHistoryManager.shared.saveResult(results, frontImage: frontImage)
+            ResultHistoryManager.shared.saveResult(results, frontImage: frontImage, gender: selectedGender)
             print("💾 Results saved to history with thumbnail")
             
             // CRITICAL: Stop the loading indicator BEFORE navigation
@@ -264,7 +635,7 @@ struct RateView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 // Switch to Results tab and pass results
                 print("🔄 Calling onAnalysisComplete with results to switch tabs...")
-                self.onAnalysisComplete(results)
+                self.onAnalysisComplete(results, selectedGender)
                 print("🔄 onAnalysisComplete called with results")
             }
         case .failure(let error):
@@ -365,15 +736,19 @@ struct PhotoSelectionView: View {
                     .cornerRadius(10)
                     .shadow(radius: 5)
             } else {
-                Image(systemName: gender == "Male" ? "person.fill" : "person.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 200, height: 200)
-                    .foregroundColor(.gray)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.gray, lineWidth: 2)
-                    )
+                if isSideProfile {
+                    Image(gender == "Male" ? "Man_side" : "Woman_side")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 300, height: 300)
+                        .cornerRadius(10)
+                } else {
+                    Image(gender == "Male" ? "Man_front" : "Woman_front")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 300, height: 300)
+                        .cornerRadius(10)
+                }
             }
             
             if selectedImage != nil {
@@ -391,7 +766,7 @@ struct PhotoSelectionView: View {
                         Button(action: {
                             validateAndContinue()
                         }) {
-                            Text("Continue")
+                            Text(isSideProfile ? "Generate Photo" : "Continue")
                                 .font(.headline)
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
@@ -562,213 +937,763 @@ struct ImagePicker: UIViewControllerRepresentable {
 // ResultsView is now in ResultsView.swift
 
 struct ProfileView: View {
+    @State private var iconAnimations: [Bool] = [false, false, false, false]
+    
+    // Detect if device is iPhone (not iPad)
+    private var isIPhone: Bool {
+        UIDevice.current.userInterfaceIdiom == .phone
+    }
+    
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                // Background gradient
+                LinearGradient(
+                    colors: [
+                        Color.black,
+                        Color(red: 0.05, green: 0.05, blue: 0.1),
+                        Color.black
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
                 
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Online Dating Maxxing Button
-                        Button(action: {
-                            // Placeholder: Online Dating Maxxing
-                            print("Online Dating Maxxing tapped")
-                        }) {
-                            VStack(alignment: .leading, spacing: 12) {
-                                HStack {
-                                    Image(systemName: "heart.fill")
-                                        .font(.title2)
-                                        .foregroundColor(.pink)
-                                    Text("Online Dating Maxxing")
-                                        .font(.title2)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(.white)
-                                    Spacer()
-                                }
-                                
-                                Text("Upload your photo of yourself and create Neurotypical or \"NT\" pics for your dating profile.")
-                                    .font(.body)
-                                    .foregroundColor(.gray)
-                                    .multilineTextAlignment(.leading)
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .fill(Color.white.opacity(0.1))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 16)
-                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                // Static view for iPhone, ScrollView for iPad
+                if isIPhone {
+                    VStack(spacing: isIPhone ? 12 : 24) {
+                        // Enhanced Header
+                        VStack(spacing: isIPhone ? 6 : 12) {
+                            HStack(spacing: isIPhone ? 8 : 12) {
+                                Image(systemName: "rocket.fill")
+                                    .font(.system(size: isIPhone ? 24 : 32, weight: .bold))
+                                    .foregroundStyle(
+                                        LinearGradient(
+                                            colors: [Color.cyan, Color.purple],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
                                     )
-                            )
+                                    .scaleEffect(iconAnimations[0] ? 1.1 : 1.0)
+                                    .animation(.spring(response: 0.6, dampingFraction: 0.6).repeatForever(autoreverses: true), value: iconAnimations[0])
+                                
+                                Text("Start Maxxing")
+                                    .font(.system(size: isIPhone ? 26 : 36, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white)
+                            }
+                            
+                            Text("Explore personalized strategies to level up your social and physical game.")
+                                .font(.system(size: isIPhone ? 12 : 15, weight: .medium))
+                                .foregroundColor(.gray.opacity(0.9))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, isIPhone ? 16 : 20)
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .padding(.top, isIPhone ? 12 : 20)
+                        .padding(.bottom, isIPhone ? 6 : 10)
                         
-                        // RizzMaxxing Button
-                        NavigationLink(destination: RizzMaxxingView()) {
-                            VStack(alignment: .leading, spacing: 12) {
-                                HStack {
-                                    Image(systemName: "message.fill")
-                                        .font(.title2)
-                                        .foregroundColor(.cyan)
-                                    Text("RizzMaxxing")
-                                        .font(.title2)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(.white)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .foregroundColor(.gray)
-                                }
-                                
-                                Text("Having problems talking to girls? Is she leaving you on opened on Snap? Get help now.")
-                                    .font(.body)
-                                    .foregroundColor(.gray)
-                                    .multilineTextAlignment(.leading)
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .fill(Color.white.opacity(0.1))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 16)
-                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                                    )
-                            )
-                        }
-                        .buttonStyle(PlainButtonStyle())
+                        // Tindermaxxing Card
+                        MaxxingCard(
+                            icon: "heart.fill",
+                            iconColor: .pink,
+                            iconBackground: LinearGradient(colors: [Color.pink.opacity(0.3), Color.red.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                            title: "Tindermaxxing",
+                            description: "Upload your photo of yourself and create Neurotypical or \"NT\" pics for your dating profile.",
+                            cardGradient: LinearGradient(colors: [Color.pink.opacity(0.15), Color.red.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                            destination: OnlineDatingMaxxingView(),
+                            animationIndex: 0,
+                            iconAnimations: $iconAnimations,
+                            isIPhone: isIPhone
+                        )
                         
-                        // Looksmaxxing Button
-                        Button(action: {
-                            // Placeholder: Looksmaxxing
-                            print("Looksmaxxing tapped")
-                        }) {
-                            VStack(alignment: .leading, spacing: 12) {
-                                HStack {
-                                    Image(systemName: "sparkles")
-                                        .font(.title2)
-                                        .foregroundColor(.purple)
-                                    Text("Looksmaxxing")
-                                        .font(.title2)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(.white)
-                                    Spacer()
-                                }
-                                
-                                Text("Truth about your looks and how to improve and ascend (if needed).")
-                                    .font(.body)
-                                    .foregroundColor(.gray)
-                                    .multilineTextAlignment(.leading)
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .fill(Color.white.opacity(0.1))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 16)
-                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                                    )
-                            )
-                        }
-                        .buttonStyle(PlainButtonStyle())
+                        // Rizz Coach Card
+                        MaxxingCard(
+                            icon: "message.fill",
+                            iconColor: .cyan,
+                            iconBackground: LinearGradient(colors: [Color.cyan.opacity(0.3), Color.blue.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                            title: "Rizz Coach",
+                            description: "Struggling with conversations? Get advice and text responses to help.",
+                            cardGradient: LinearGradient(colors: [Color.cyan.opacity(0.15), Color.blue.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                            destination: RizzMaxxingView(),
+                            animationIndex: 1,
+                            iconAnimations: $iconAnimations,
+                            isIPhone: isIPhone
+                        )
+                        
+                        // Looksmaxxing Card
+                        MaxxingCard(
+                            icon: "sparkles",
+                            iconColor: .purple,
+                            iconBackground: LinearGradient(colors: [Color.purple.opacity(0.3), Color.pink.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                            title: "Looksmaxxing",
+                            description: "Understand your looks — and how to improve them. Get personalized looksmaxxing advice.",
+                            cardGradient: LinearGradient(colors: [Color.purple.opacity(0.15), Color.pink.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                            destination: LooksmaxxingView(),
+                            animationIndex: 2,
+                            iconAnimations: $iconAnimations,
+                            isIPhone: isIPhone
+                        )
+                        
+                        // Sub 5 to Mogger Card
+                        MaxxingCard(
+                            icon: "crown.fill",
+                            iconColor: .yellow,
+                            iconBackground: LinearGradient(colors: [Color.yellow.opacity(0.3), Color.orange.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                            title: "Sub 5 to Mogger",
+                            description: "See what you would look like as a mogger.",
+                            cardGradient: LinearGradient(colors: [Color.yellow.opacity(0.15), Color.orange.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                            destination: Sub5ToChadView(),
+                            animationIndex: 3,
+                            iconAnimations: $iconAnimations,
+                            isIPhone: isIPhone
+                        )
+                        
+                        Spacer()
                     }
-                    .padding()
+                    .padding(isIPhone ? 12 : 16)
+                } else {
+                    ScrollView {
+                        VStack(spacing: 24) {
+                            // Enhanced Header
+                            VStack(spacing: 12) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "rocket.fill")
+                                        .font(.system(size: 32, weight: .bold))
+                                        .foregroundStyle(
+                                            LinearGradient(
+                                                colors: [Color.cyan, Color.purple],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                        .scaleEffect(iconAnimations[0] ? 1.1 : 1.0)
+                                        .animation(.spring(response: 0.6, dampingFraction: 0.6).repeatForever(autoreverses: true), value: iconAnimations[0])
+                                    
+                                    Text("Start Maxxing")
+                                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                                        .foregroundColor(.white)
+                                }
+                                
+                                Text("Explore personalized strategies to level up your social and physical game.")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(.gray.opacity(0.9))
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 20)
+                            }
+                            .padding(.top, 20)
+                            .padding(.bottom, 10)
+                            
+                            // Tindermaxxing Card
+                            MaxxingCard(
+                                icon: "heart.fill",
+                                iconColor: .pink,
+                                iconBackground: LinearGradient(colors: [Color.pink.opacity(0.3), Color.red.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                title: "Tindermaxxing",
+                                description: "Upload your photo of yourself and create Neurotypical or \"NT\" pics for your dating profile.",
+                                cardGradient: LinearGradient(colors: [Color.pink.opacity(0.15), Color.red.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                destination: OnlineDatingMaxxingView(),
+                                animationIndex: 0,
+                                iconAnimations: $iconAnimations,
+                                isIPhone: false
+                            )
+                            
+                            // Rizz Coach Card
+                            MaxxingCard(
+                                icon: "message.fill",
+                                iconColor: .cyan,
+                                iconBackground: LinearGradient(colors: [Color.cyan.opacity(0.3), Color.blue.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                title: "Rizz Coach",
+                                description: "Struggling with conversations? Get advice and text responses to help.",
+                                cardGradient: LinearGradient(colors: [Color.cyan.opacity(0.15), Color.blue.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                destination: RizzMaxxingView(),
+                                animationIndex: 1,
+                                iconAnimations: $iconAnimations,
+                                isIPhone: false
+                            )
+                            
+                            // Looksmaxxing Card
+                            MaxxingCard(
+                                icon: "sparkles",
+                                iconColor: .purple,
+                                iconBackground: LinearGradient(colors: [Color.purple.opacity(0.3), Color.pink.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                title: "Looksmaxxing",
+                                description: "Understand your looks — and how to improve them. Get personalized looksmaxxing advice.",
+                                cardGradient: LinearGradient(colors: [Color.purple.opacity(0.15), Color.pink.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                destination: LooksmaxxingView(),
+                                animationIndex: 2,
+                                iconAnimations: $iconAnimations,
+                                isIPhone: false
+                            )
+                            
+                            // Sub 5 to Mogger Card
+                            MaxxingCard(
+                                icon: "crown.fill",
+                                iconColor: .yellow,
+                                iconBackground: LinearGradient(colors: [Color.yellow.opacity(0.3), Color.orange.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                title: "Sub 5 to Mogger",
+                                description: "See what you would look like as a mogger.",
+                                cardGradient: LinearGradient(colors: [Color.yellow.opacity(0.15), Color.orange.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                destination: Sub5ToChadView(),
+                                animationIndex: 3,
+                                iconAnimations: $iconAnimations,
+                                isIPhone: false
+                            )
+                        }
+                        .padding()
+                    }
+                }
+            }
+            .onAppear {
+                // Trigger icon animations on appear
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    for i in 0..<iconAnimations.count {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.15) {
+                            iconAnimations[i] = true
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-struct SettingsView: View {
-    @StateObject private var scaleManager = ScaleManager.shared
+struct MaxxingCard<Destination: View>: View {
+    let icon: String
+    let iconColor: Color
+    let iconBackground: LinearGradient
+    let title: String
+    let description: String
+    let cardGradient: LinearGradient
+    let destination: Destination
+    let animationIndex: Int
+    @Binding var iconAnimations: [Bool]
+    let isIPhone: Bool
+    @State private var isPressed = false
+    
+    init(icon: String, iconColor: Color, iconBackground: LinearGradient, title: String, description: String, cardGradient: LinearGradient, destination: Destination, animationIndex: Int, iconAnimations: Binding<[Bool]>, isIPhone: Bool = false) {
+        self.icon = icon
+        self.iconColor = iconColor
+        self.iconBackground = iconBackground
+        self.title = title
+        self.description = description
+        self.cardGradient = cardGradient
+        self.destination = destination
+        self.animationIndex = animationIndex
+        self._iconAnimations = iconAnimations
+        self.isIPhone = isIPhone
+    }
     
     var body: some View {
-        NavigationView {
-            List {
-                Section(header: Text("Display Scale")) {
-                    Picker("Scale", selection: $scaleManager.selectedScale) {
-                        ForEach(DisplayScale.allCases, id: \.self) { scale in
-                            Text(scale.displayName).tag(scale)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    Text("Choose how PSL scores are displayed:")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                        .padding(.top, 4)
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("• PSL Scale (0-8): Traditional looksmax scale")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                        Text("• 1-10 Objective Scale: More intuitive rating")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
-                    .padding(.top, 8)
-                }
-                
-                Section(header: Text("About")) {
-                    Text("PSL Scale is the traditional looksmax rating system (0-8 range).")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                    Text("1-10 Objective Scale provides a more intuitive rating (0-10 range).")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
-                
-                Section(header: Text("Pro")) {
-                    Button(action: {
-                        // Placeholder: Upgrade to Pro
-                        print("Upgrade to Pro tapped")
-                    }) {
-                        HStack {
-                            Image(systemName: "star.fill")
-                                .foregroundColor(.yellow)
-                            Text("Upgrade to Pro")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                        }
-                    }
-                }
-                
-                Section(header: Text("Legal")) {
-                    Button(action: {
-                        // Placeholder: Privacy Policy
-                        print("Privacy Policy tapped")
-                    }) {
-                        HStack {
-                            Image(systemName: "lock.shield.fill")
-                                .foregroundColor(.blue)
-                            Text("Privacy Policy")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                        }
+        NavigationLink(destination: destination) {
+            VStack(alignment: .leading, spacing: isIPhone ? 10 : 16) {
+                HStack(spacing: isIPhone ? 12 : 16) {
+                    // Icon with badge background
+                    ZStack {
+                        Circle()
+                            .fill(iconBackground)
+                            .frame(width: isIPhone ? 44 : 56, height: isIPhone ? 44 : 56)
+                            .shadow(color: iconColor.opacity(0.3), radius: 8, x: 0, y: 4)
+                        
+                        Image(systemName: icon)
+                            .font(.system(size: isIPhone ? 18 : 24, weight: .semibold))
+                            .foregroundColor(iconColor)
+                            .scaleEffect(iconAnimations[animationIndex] ? 1.1 : 1.0)
+                            .animation(.spring(response: 0.6, dampingFraction: 0.6).repeatForever(autoreverses: true), value: iconAnimations[animationIndex])
                     }
                     
-                    Button(action: {
-                        // Placeholder: Terms of Use
-                        print("Terms of Use tapped")
-                    }) {
-                        HStack {
-                            Image(systemName: "doc.text.fill")
-                                .foregroundColor(.blue)
-                            Text("Terms of Use")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.gray)
+                    // Title
+                    Text(title)
+                        .font(.system(size: isIPhone ? 16 : 20, weight: .bold))
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                    
+                    // Chevron
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: isIPhone ? 12 : 14, weight: .semibold))
+                        .foregroundColor(.gray.opacity(0.6))
+                        .offset(x: isPressed ? 4 : 0)
+                }
+                
+                // Description
+                Text(description)
+                    .font(.system(size: isIPhone ? 11 : 14, weight: .regular))
+                    .foregroundColor(.gray.opacity(0.8))
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(isIPhone ? 14 : 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: isIPhone ? 16 : 20)
+                    .fill(
+                        // Glassmorphism effect
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.12),
+                                Color.white.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .background(
+                        RoundedRectangle(cornerRadius: isIPhone ? 16 : 20)
+                            .fill(cardGradient.opacity(0.3))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: isIPhone ? 16 : 20)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.25),
+                                        Color.white.opacity(0.1)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    )
+            )
+            .shadow(color: Color.white.opacity(0.05), radius: 6, x: 0, y: 2)
+            .scaleEffect(isPressed ? 0.98 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isPressed)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    isPressed = true
+                }
+                .onEnded { _ in
+                    isPressed = false
+                }
+        )
+    }
+}
+
+struct SettingsView: View {
+    @StateObject private var scaleManager = ScaleManager.shared
+    @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @State private var isShowingUpgrade = false
+    @State private var isRestoring = false
+    @State private var showRestoreSuccess = false
+    @State private var showRestoreError = false
+    @State private var restoreError: String?
+    
+    init() {
+        // Configure segmented control appearance for better visibility
+        UISegmentedControl.appearance().setTitleTextAttributes([
+            .foregroundColor: UIColor.white,
+            .font: UIFont.systemFont(ofSize: 13, weight: .medium)
+        ], for: .normal)
+        
+        UISegmentedControl.appearance().setTitleTextAttributes([
+            .foregroundColor: UIColor.black,
+            .font: UIFont.systemFont(ofSize: 13, weight: .semibold)
+        ], for: .selected)
+        
+        // Make unselected segments more visible
+        UISegmentedControl.appearance().backgroundColor = UIColor(white: 0.2, alpha: 1.0)
+        UISegmentedControl.appearance().selectedSegmentTintColor = UIColor.white
+    }
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                
+                List {
+                    Section(header: Text("Display Scale")
+                        .foregroundColor(.white)
+                        .font(.headline)) {
+                        Picker("Scale", selection: $scaleManager.selectedScale) {
+                            ForEach(DisplayScale.allCases, id: \.self) { scale in
+                                Text(scale.displayName).tag(scale)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        
+                        Text("Choose how PSL scores are displayed:")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.top, 12)
+                        
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("• PSL Scale (0-8): Traditional looksmax scale")
+                                .font(.body)
+                                .fontWeight(.medium)
+                                .foregroundColor(.white.opacity(0.9))
+                            Text("• 1-10 Objective Scale: More intuitive rating")
+                                .font(.body)
+                                .fontWeight(.medium)
+                                .foregroundColor(.white.opacity(0.9))
+                        }
+                        .padding(.top, 12)
+                    }
+                    .listRowBackground(Color.white.opacity(0.05))
+                    
+                    Section(header: Text("Scale Reference")
+                        .foregroundColor(.white)
+                        .font(.headline)) {
+                        ScaleReferenceSection(selectedScale: scaleManager.selectedScale)
+                    }
+                    .listRowBackground(Color.white.opacity(0.05))
+                    
+                    Section(header: Text("Pro")
+                        .foregroundColor(.white)
+                        .font(.headline)) {
+                        if subscriptionManager.isPro {
+                            // Show Restore Purchases for Pro users
+                            Button {
+                                handleRestorePurchases()
+                            } label: {
+                                HStack {
+                                    if isRestoring {
+                                        ProgressView()
+                                            .tint(.white)
+                                            .scaleEffect(0.8)
+                                    } else {
+                                        Image(systemName: "arrow.clockwise")
+                                            .foregroundColor(.blue)
+                                    }
+                                    Text(isRestoring ? "Restoring..." : "Restore Purchases")
+                                        .foregroundColor(.white)
+                                    Spacer()
+                                    if !isRestoring {
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                            }
+                            .disabled(isRestoring)
+                        } else {
+                            // Show Upgrade to Pro for free users
+                            Button {
+                                isShowingUpgrade = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "star.fill")
+                                        .foregroundColor(.yellow)
+                                    Text("Upgrade to Pro")
+                                        .foregroundColor(.white)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                            }
                         }
                     }
+                    .listRowBackground(Color.white.opacity(0.05))
+                    
+                    Section(header: Text("Legal")
+                        .foregroundColor(.white)
+                        .font(.headline)) {
+                        Link(destination: URL(string: "https://www.faceratingapp.com/privacy")!) {
+                            HStack {
+                                Image(systemName: "lock.shield.fill")
+                                    .foregroundColor(.blue)
+                                Text("Privacy Policy")
+                                    .foregroundColor(.white)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        
+                        Link(destination: URL(string: "https://www.faceratingapp.com/terms")!) {
+                            HStack {
+                                Image(systemName: "doc.text.fill")
+                                    .foregroundColor(.blue)
+                                Text("Terms of Use")
+                                    .foregroundColor(.white)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                    }
+                    .listRowBackground(Color.white.opacity(0.05))
+                }
+                .scrollContentBackground(.hidden)
+                .listStyle(.insetGrouped)
+            }
+        }
+        .toolbar(.visible, for: .tabBar)
+        .fullScreenCover(isPresented: $isShowingUpgrade) {
+            UpgradeView()
+        }
+        .alert("Restore Successful", isPresented: $showRestoreSuccess) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Your purchases have been restored successfully.")
+        }
+        .alert("Restore Failed", isPresented: $showRestoreError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(restoreError ?? "Unable to restore purchases. Please try again.")
+        }
+    }
+    
+    private func handleRestorePurchases() {
+        isRestoring = true
+        restoreError = nil
+        
+        Task {
+            await subscriptionManager.restorePurchases()
+            
+            await MainActor.run {
+                isRestoring = false
+                if subscriptionManager.isPro {
+                    showRestoreSuccess = true
+                } else {
+                    restoreError = "No active subscriptions found to restore."
+                    showRestoreError = true
                 }
             }
         }
+    }
+}
+
+// MARK: - Scale Category View
+// MARK: - Scale Reference Section
+struct ScaleReferenceSection: View {
+    let selectedScale: DisplayScale
+    @State private var showDetails = false
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            Button(action: {
+                withAnimation {
+                    showDetails.toggle()
+                }
+            }) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(selectedScale == .psl ? "PSL Scale (0-8)" : "1-10 Objective Scale")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        Text(showDetails ? "Tap to hide details" : "Tap to view scale reference")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                    Spacer()
+                    Image(systemName: showDetails ? "chevron.up" : "chevron.down")
+                        .foregroundColor(.gray)
+                        .font(.caption)
+                }
+                .padding()
+            }
+            
+            if showDetails {
+                if selectedScale == .psl {
+                    pslScaleContent
+                } else {
+                    objectiveScaleContent
+                }
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white.opacity(0.05))
+        )
+    }
+    
+    private var pslScaleContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScaleCategoryView(title: "Subhuman", ranges: [
+                "Below 0.5: Low Subhuman",
+                "0.5 - 0.7: Subhuman",
+                "0.8 - 1.3: High Subhuman"
+            ])
+            
+            ScaleCategoryView(title: "Sub 5", ranges: [
+                "1.4 - 1.8: LTN-/LTB-",
+                "1.9 - 2.3: LTN/LTB",
+                "2.4 - 2.7: LTN+/LTB+",
+                "2.8 - 3.2: MTN-/MTB-",
+                "3.3 - 4.5: MTN/MTB",
+                "4.6 - 5.0: MTN+/MTB+"
+            ])
+            
+            ScaleCategoryView(title: "HTN/HTB", ranges: [
+                "5.1 - 5.3: HTN-/HTB-",
+                "5.4 - 5.6: HTN/HTB",
+                "5.7 - 5.9: HTN+/HTB+"
+            ])
+            
+            ScaleCategoryView(title: "Chadlite/Stacylite", ranges: [
+                "6.0 - 6.3: Low Chadlite/Stacylite",
+                "6.4 - 6.5: Chadlite/Stacylite",
+                "6.6 - 6.8: High Chadlite/Stacylite"
+            ])
+            
+            ScaleCategoryView(title: "Chad/Stacy", ranges: [
+                "6.9 - 7.0: Low Chad/Stacy",
+                "7.1 - 7.2: Chad/Stacy",
+                "7.3 - 7.4: High Chad/Stacy"
+            ])
+            
+            ScaleCategoryView(title: "Adam/Eve", ranges: [
+                "7.5 - 7.7: Adamlite/Evelite",
+                "7.8 - 8.0: True Adam/Eve"
+            ])
+        }
+        .padding(.horizontal)
+        .padding(.bottom)
+    }
+    
+    private var objectiveScaleContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScaleCategoryView(title: "Subhuman", ranges: [
+                "Below 0.5: Low Subhuman",
+                "0.5 - 1.0: Subhuman",
+                "1.1 - 1.4: High Subhuman"
+            ])
+            
+            ScaleCategoryView(title: "Normie/Becky/Sub5", ranges: [
+                "1.5 - 1.9: LTN-/LTB-",
+                "2.0 - 2.5: LTN/LTB",
+                "2.6 - 3.4: LTN+/LTB+",
+                "3.5 - 3.9: MTN-/MTB-",
+                "4.0 - 4.5: MTN/MTB",
+                "4.6 - 5.1: MTN+/MTB+"
+            ])
+            
+            ScaleCategoryView(title: "High-tier Normie", ranges: [
+                "5.2 - 5.7: HTN-/HTB-",
+                "5.8 - 6.0: HTN/HTB",
+                "6.1 - 6.5: HTN+/HTB+"
+            ])
+            
+            ScaleCategoryView(title: "Chadlite/Stacylite", ranges: [
+                "6.6 - 6.9: Low Chadlite/Stacylite",
+                "7.0 - 7.4: Chadlite/Stacylite",
+                "7.5 - 7.7: High Chadlite/Stacylite"
+            ])
+            
+            ScaleCategoryView(title: "Chad/Stacy", ranges: [
+                "7.8 - 8.0: Low Chad/Stacy",
+                "8.1 - 8.3: Chad/Stacy",
+                "8.4 - 8.5: High Chad/True Stacy"
+            ])
+            
+            ScaleCategoryView(title: "Terrachad/Terrastacy", ranges: [
+                "8.6 - 9.4: Terrachad/Terrastacy"
+            ])
+            
+            ScaleCategoryView(title: "Adam/Eve", ranges: [
+                "9.5 - 9.6: Adamlite/Evelite",
+                "9.7 - 9.9: True Adam/Eve"
+            ])
+        }
+        .padding(.horizontal)
+        .padding(.bottom)
+    }
+}
+
+// MARK: - Scale Category View
+struct ScaleCategoryView: View {
+    let title: String
+    let ranges: [String]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(.cyan)
+            
+            ForEach(ranges, id: \.self) { range in
+                Text(range)
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                    .padding(.leading, 8)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Rate Feature Row Component
+struct RateFeatureRow: View {
+    let icon: String
+    let text: String
+    let keyTerm: String
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            // SF Symbol icon with gradient background
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.cyan.opacity(0.3), Color.purple.opacity(0.2)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 44, height: 44)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color.cyan, Color.purple],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+            
+            // Split text to bold the key term
+            if let range = text.range(of: keyTerm) {
+                let before = String(text[..<range.lowerBound])
+                let key = String(text[range])
+                let after = String(text[range.upperBound...])
+                
+                (Text(before) +
+                 Text(key).fontWeight(.bold).foregroundColor(.cyan) +
+                 Text(after))
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white)
+            } else {
+                Text(text)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white)
+            }
+            
+            Spacer()
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.1), Color.white.opacity(0.05)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.2), Color.white.opacity(0.1)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+        )
+        .shadow(color: .black.opacity(0.3), radius: 6, x: 0, y: 3)
     }
 }
 

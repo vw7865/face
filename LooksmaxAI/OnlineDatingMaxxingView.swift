@@ -39,6 +39,13 @@ struct OnlineDatingMaxxingView: View {
     @StateObject private var usageTracker = UsageTracker.shared
     @StateObject private var subscriptionManager = SubscriptionManager.shared
     @State private var isShowingUpgrade = false
+    @State private var isShowingCreditPurchase = false
+    @State private var showOutOfCreditsAlert = false
+    
+    enum ClothingSource: String, CaseIterable {
+        case myImage = "My image"
+        case referenceImage = "The reference image"
+    }
     
     enum DatingMode {
         case singleImage  // Generate image using your face
@@ -77,6 +84,13 @@ struct OnlineDatingMaxxingView: View {
             .navigationBarBackButtonHidden(true)
             .toolbarVisibility(.hidden, for: .tabBar)
             .toolbar {
+                // Credit balance display (Pro users only)
+                if subscriptionManager.isPro {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        CreditBalanceView(showCreditPurchase: $isShowingCreditPurchase)
+                    }
+                }
+                
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: {
                         dismiss()
@@ -93,6 +107,17 @@ struct OnlineDatingMaxxingView: View {
             }
             .fullScreenCover(isPresented: $isShowingUpgrade) {
                 UpgradeView()
+            }
+            .fullScreenCover(isPresented: $isShowingCreditPurchase) {
+                CreditPurchaseView()
+            }
+            .alert("Out of Credits", isPresented: $showOutOfCreditsAlert) {
+                Button("Continue") {
+                    isShowingCreditPurchase = true
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("Purchase credits to continue")
             }
             .sheet(isPresented: $showUserPhotoPicker) {
                 ImagePicker(selectedImage: $userPhoto, sourceType: imagePickerSourceType)
@@ -902,6 +927,16 @@ struct OnlineDatingMaxxingView: View {
     private func generatePhoto() {
         guard let userPhoto = userPhoto else { return }
         
+        // Check if user has credits
+        guard usageTracker.canUseImageGeneration() else {
+            if !subscriptionManager.isPro {
+                isShowingUpgrade = true
+            } else {
+                errorMessage = "You've used all your monthly credits. Purchase more credits to continue generating images."
+            }
+            return
+        }
+        
         // Validate based on mode
         if selectedMode == .fullBodySwap && referenceImage == nil {
             errorMessage = "Please upload a reference image for full body swap"
@@ -915,6 +950,12 @@ struct OnlineDatingMaxxingView: View {
                 errorMessage = "Please describe the scene you want (e.g., 'coffee shop', 'beach at sunset')"
                 return
             }
+        }
+        
+        // Deduct credit before generation
+        guard usageTracker.useImageGenerationCredit() else {
+            errorMessage = "Failed to deduct credit. Please try again."
+            return
         }
         
         isGenerating = true
@@ -996,6 +1037,8 @@ struct OnlineDatingMaxxingView: View {
                     generatedImage = image
                     showResults = true
                 case .failure(let error):
+                    // Refund credit on failure
+                    usageTracker.addImageGenerationCredits(1)
                     errorMessage = error.localizedDescription
                 }
             }
