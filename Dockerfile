@@ -76,11 +76,15 @@ RUN mkdir -p ./models && \
     (echo "❌ ERROR: FaceStats model download failed!" && exit 1)
 
 # Download beauty-classifier model (94 MB - too large for GitHub, needs cloud storage)
-# Option 1: Download from Google Drive (uncomment and add your file ID)
-# RUN wget --no-check-certificate "https://drive.google.com/uc?export=download&id=YOUR_FILE_ID" -O ./models/attractiveness_classifier.pt || echo "Beauty-classifier model download failed"
-# Option 2: Download from Dropbox (uncomment and add your link)
-# RUN wget "https://dl.dropboxusercontent.com/s/YOUR_FILE_ID/attractiveness_classifier.pt" -O ./models/attractiveness_classifier.pt || echo "Beauty-classifier model download failed"
-# Note: For now, beauty-classifier is optional - app works with FaceStats only
+# Google Drive file ID: 1ehgqY0s9HsK_K-qHx1LSl3fipVBXa9Rp
+# Try wget first, then gdown if wget gets HTML (Google Drive virus scan page)
+RUN pip install -q gdown 2>/dev/null || true && \
+    (wget --no-check-certificate "https://drive.google.com/uc?export=download&id=1ehgqY0s9HsK_K-qHx1LSl3fipVBXa9Rp" -O ./models/attractiveness_classifier.pt 2>/dev/null || \
+     gdown "https://drive.google.com/uc?id=1ehgqY0s9HsK_K-qHx1LSl3fipVBXa9Rp" -O ./models/attractiveness_classifier.pt --fuzzy 2>/dev/null || \
+     echo "⚠️ Beauty-classifier model download failed (optional - app works with FaceStats only)") && \
+    (test -f ./models/attractiveness_classifier.pt && test -s ./models/attractiveness_classifier.pt && \
+     echo "✅ Beauty-classifier model downloaded successfully" || \
+     echo "⚠️ Beauty-classifier model not available (optional)")
 
 # Note: Model files are downloaded from GitHub above (FaceStats model)
 # If you have additional local model files, uncomment the line below:
