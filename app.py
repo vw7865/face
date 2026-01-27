@@ -2211,7 +2211,9 @@ def calculate_facestats_score(image_array):
                 # get_image_features returned an object: compute 512-d via vision_model + visual_projection
                 if pixel_values is not None:
                     vision_outputs = _CLIP_MODEL.vision_model(pixel_values=pixel_values)
-                    pooled = getattr(vision_outputs, "pooler_output", None) or vision_outputs[0]
+                    pooled = getattr(vision_outputs, "pooler_output", None)
+                    if pooled is None:
+                        pooled = vision_outputs[0]  # Use first element if no pooler_output
                     features = _CLIP_MODEL.visual_projection(pooled)
                 else:
                     raise RuntimeError("CLIP get_image_features returned non-tensor and no pixel_values")
@@ -2219,7 +2221,9 @@ def calculate_facestats_score(image_array):
                 # Wrong length: compute 512-d via vision_model + visual_projection
                 if pixel_values is not None:
                     vision_outputs = _CLIP_MODEL.vision_model(pixel_values=pixel_values)
-                    pooled = getattr(vision_outputs, "pooler_output", None) or vision_outputs[0]
+                    pooled = getattr(vision_outputs, "pooler_output", None)
+                    if pooled is None:
+                        pooled = vision_outputs[0]  # Use first element if no pooler_output
                     features = _CLIP_MODEL.visual_projection(pooled)
                 else:
                     features = raw.view(1, -1)[:, :512]
