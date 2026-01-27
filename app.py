@@ -2204,6 +2204,16 @@ def calculate_facestats_score(image_array):
             inputs = _CLIP_PROCESSOR(images=img, return_tensors="pt")
             with torch.no_grad():
                 features = _CLIP_MODEL.get_image_features(**inputs)
+            # Newer transformers may return full token sequence (e.g. 38400-d) instead of pooled 512-d.
+            # FaceStats regressor expects 512-d. If wrong shape, get pooled output via vision_model + visual_projection.
+            if features.shape[-1] != 512:
+                pixel_values = inputs.get("pixel_values")
+                if pixel_values is not None:
+                    vision_outputs = _CLIP_MODEL.vision_model(pixel_values=pixel_values)
+                    pooled = getattr(vision_outputs, "pooler_output", None) or vision_outputs[0]
+                    features = _CLIP_MODEL.visual_projection(pooled)  # [B, 512]
+                else:
+                    features = features.view(1, -1)[:, :512]
             vec = features[0].cpu().numpy()
             return vec / (np.linalg.norm(vec) + 1e-8)
         
