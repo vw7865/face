@@ -2202,18 +2202,29 @@ def calculate_facestats_score(image_array):
             
             img = Image.open(image_path).convert("RGB")
             inputs = _CLIP_PROCESSOR(images=img, return_tensors="pt")
+            pixel_values = inputs.get("pixel_values")
             with torch.no_grad():
-                features = _CLIP_MODEL.get_image_features(**inputs)
-            # Newer transformers may return full token sequence (e.g. 38400-d) instead of pooled 512-d.
-            # FaceStats regressor expects 512-d. If wrong shape, get pooled output via vision_model + visual_projection.
-            if features.shape[-1] != 512:
-                pixel_values = inputs.get("pixel_values")
+                raw = _CLIP_MODEL.get_image_features(**inputs)
+            # Some envs return BaseModelOutputWithPooling (no .shape); others return tensor.
+            # FaceStats regressor needs 512-d. Get tensor and ensure 512-d.
+            if not hasattr(raw, "shape"):
+                # get_image_features returned an object: compute 512-d via vision_model + visual_projection
                 if pixel_values is not None:
                     vision_outputs = _CLIP_MODEL.vision_model(pixel_values=pixel_values)
                     pooled = getattr(vision_outputs, "pooler_output", None) or vision_outputs[0]
-                    features = _CLIP_MODEL.visual_projection(pooled)  # [B, 512]
+                    features = _CLIP_MODEL.visual_projection(pooled)
                 else:
-                    features = features.view(1, -1)[:, :512]
+                    raise RuntimeError("CLIP get_image_features returned non-tensor and no pixel_values")
+            elif raw.shape[-1] != 512:
+                # Wrong length: compute 512-d via vision_model + visual_projection
+                if pixel_values is not None:
+                    vision_outputs = _CLIP_MODEL.vision_model(pixel_values=pixel_values)
+                    pooled = getattr(vision_outputs, "pooler_output", None) or vision_outputs[0]
+                    features = _CLIP_MODEL.visual_projection(pooled)
+                else:
+                    features = raw.view(1, -1)[:, :512]
+            else:
+                features = raw
             vec = features[0].cpu().numpy()
             return vec / (np.linalg.norm(vec) + 1e-8)
         
