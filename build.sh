@@ -60,18 +60,17 @@ else
 fi
 
 # Download beauty-classifier model if not present
-# To use: Upload model to Google Drive, get file ID, replace YOUR_FILE_ID below
+GOOGLE_DRIVE_FILE_ID="${GOOGLE_DRIVE_FILE_ID:-1ehgqY0s9HsK_K-qHx1LSl3fipVBXa9Rp}"
 if [ ! -f "models/attractiveness_classifier.pt" ]; then
     echo "=== Beauty-classifier model not found ==="
-    echo "   Attempting to download from cloud storage..."
-    
-    # Option 1: Google Drive (uncomment and add your file ID)
-    # GOOGLE_DRIVE_FILE_ID="YOUR_FILE_ID_HERE"
-    # if [ -n "$GOOGLE_DRIVE_FILE_ID" ]; then
-    #     echo "Downloading from Google Drive..."
-    #     wget --no-check-certificate "https://drive.google.com/uc?export=download&id=$GOOGLE_DRIVE_FILE_ID" -O models/attractiveness_classifier.pt || echo "Download failed"
-    # fi
-    
+    echo "   Attempting to download from Google Drive (id=$GOOGLE_DRIVE_FILE_ID)..."
+    wget --no-check-certificate "https://drive.google.com/uc?export=download&id=$GOOGLE_DRIVE_FILE_ID" -O models/attractiveness_classifier.pt 2>/dev/null || true
+    # Large files: Google often returns HTML virus-scan page; try gdown if file is small/missing
+    SIZE=$(wc -c < "models/attractiveness_classifier.pt" 2>/dev/null || echo 0)
+    if [ ! -s "models/attractiveness_classifier.pt" ] || [ "$SIZE" -lt 50000000 ]; then
+        echo "   Trying gdown for large-file support..."
+        pip install -q gdown 2>/dev/null && gdown "https://drive.google.com/uc?id=$GOOGLE_DRIVE_FILE_ID" -O models/attractiveness_classifier.pt --fuzzy 2>/dev/null || true
+    fi
     # Option 2: Dropbox (uncomment and add your link)
     # DROPBOX_LINK="https://dl.dropboxusercontent.com/s/YOUR_FILE_ID/attractiveness_classifier.pt"
     # if [ -n "$DROPBOX_LINK" ]; then
