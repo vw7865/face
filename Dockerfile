@@ -77,14 +77,17 @@ RUN mkdir -p ./models && \
 
 # Download beauty-classifier model (94 MB - too large for GitHub, needs cloud storage)
 # Google Drive file ID: 1ehgqY0s9HsK_K-qHx1LSl3fipVBXa9Rp
-# Try wget first, then gdown if wget gets HTML (Google Drive virus scan page)
-RUN pip install -q gdown 2>/dev/null || true && \
-    (wget --no-check-certificate "https://drive.google.com/uc?export=download&id=1ehgqY0s9HsK_K-qHx1LSl3fipVBXa9Rp" -O ./models/attractiveness_classifier.pt 2>/dev/null || \
-     gdown "https://drive.google.com/uc?id=1ehgqY0s9HsK_K-qHx1LSl3fipVBXa9Rp" -O ./models/attractiveness_classifier.pt --fuzzy 2>/dev/null || \
-     echo "⚠️ Beauty-classifier model download failed (optional - app works with FaceStats only)") && \
-    (test -f ./models/attractiveness_classifier.pt && test -s ./models/attractiveness_classifier.pt && \
-     echo "✅ Beauty-classifier model downloaded successfully" || \
-     echo "⚠️ Beauty-classifier model not available (optional)")
+# Use gdown (handles Google Drive virus scan pages better than wget)
+RUN pip install -q gdown 2>/dev/null && \
+    (gdown "https://drive.google.com/uc?id=1ehgqY0s9HsK_K-qHx1LSl3fipVBXa9Rp" -O ./models/attractiveness_classifier.pt --fuzzy 2>&1 || true) && \
+    SIZE=$(wc -c < ./models/attractiveness_classifier.pt 2>/dev/null || echo 0) && \
+    if [ "$SIZE" -gt 50000000 ]; then \
+        echo "✅ Beauty-classifier model downloaded successfully ($(expr $SIZE / 1024 / 1024)MB)"; \
+    else \
+        echo "⚠️ Beauty-classifier download failed (got ${SIZE} bytes, expected >50MB) - removing invalid file" && \
+        rm -f ./models/attractiveness_classifier.pt && \
+        echo "⚠️ Beauty-classifier model not available (optional - app works with FaceStats only)"; \
+    fi
 
 # Note: Model files are downloaded from GitHub above (FaceStats model)
 # If you have additional local model files, uncomment the line below:

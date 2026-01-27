@@ -2229,7 +2229,7 @@ def calculate_facestats_score(image_array):
                     features = raw.view(1, -1)[:, :512]
             else:
                 features = raw
-            vec = features[0].cpu().numpy()
+            vec = features[0].detach().cpu().numpy()
             return vec / (np.linalg.norm(vec) + 1e-8)
         
         # Define AttractivenessRegressorV1 directly to avoid polars dependency
