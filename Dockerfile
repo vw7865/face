@@ -44,8 +44,7 @@ RUN pip install --no-cache-dir \
 RUN pip install --no-cache-dir \
     "opencv-python-headless>=4.8.0" \
     "mediapipe==0.10.21" \
-    "scikit-learn>=1.3.0" \
-    "polars>=0.19.0"
+    "scikit-learn>=1.3.0"
 
 # Install PyTorch (CPU-only, smaller and faster)
 RUN pip install --no-cache-dir \
@@ -53,10 +52,11 @@ RUN pip install --no-cache-dir \
     "torchvision>=0.15.0" \
     --index-url https://download.pytorch.org/whl/cpu
 
-# Install transformers and deepface last (they depend on torch)
-RUN pip install --no-cache-dir \
-    "transformers>=4.30.0" \
-    "deepface>=0.0.79"
+# Install TensorFlow (for AttractiveNet MobileNetV2 model)
+RUN pip install --no-cache-dir "tensorflow>=2.13.0"
+
+# Install deepface (depends on torch)
+RUN pip install --no-cache-dir "deepface>=0.0.79"
 
 # Copy application and configuration files
 COPY app.py .
@@ -65,64 +65,15 @@ COPY railway.json* .
 COPY start.sh .
 RUN chmod +x start.sh
 
-# Create models directory and download FaceStats model
-# Do this in one step to minimize layers
-RUN mkdir -p ./models && \
-    wget -q --timeout=30 --tries=3 \
-    https://raw.githubusercontent.com/jayklarin/FaceStats/main/models/attractiveness_regressor.pt \
-    -O ./models/attractiveness_regressor.pt && \
-    ls -lh ./models/attractiveness_regressor.pt && \
-    test -f ./models/attractiveness_regressor.pt && \
-    test -s ./models/attractiveness_regressor.pt || \
-    (echo "❌ ERROR: FaceStats model download failed!" && exit 1)
+# Copy models from repository (includes AttractiveNet MobileNetV2)
+# AttractiveNet is the PRIMARY model - outputs 1-5 range with excellent discrimination
+COPY models/ ./models/
 
-# Download beauty-classifier model (94 MB - too large for GitHub, needs cloud storage)
-# Google Drive file ID: 1ehgqY0s9HsK_K-qHx1LSl3fipVBXa9Rp
-# Use gdown (handles Google Drive virus scan pages better than wget)
-RUN pip install -q gdown 2>/dev/null && \
-    (gdown "https://drive.google.com/uc?id=1ehgqY0s9HsK_K-qHx1LSl3fipVBXa9Rp" -O ./models/attractiveness_classifier.pt --fuzzy 2>&1 || true) && \
-    SIZE=$(wc -c < ./models/attractiveness_classifier.pt 2>/dev/null || echo 0) && \
-    if [ "$SIZE" -gt 50000000 ]; then \
-        echo "✅ Beauty-classifier model downloaded successfully ($(expr $SIZE / 1024 / 1024)MB)"; \
-    else \
-        echo "⚠️ Beauty-classifier download failed (got ${SIZE} bytes, expected >50MB) - removing invalid file" && \
-        rm -f ./models/attractiveness_classifier.pt && \
-        echo "⚠️ Beauty-classifier model not available (optional - app works with FaceStats only)"; \
-    fi
-
-# Download SCUT-FBP5500 ResNet-18 model (89 MB - PC: 0.89 correlation)
-# Source: https://github.com/HCIILAB/SCUT-FBP5500-Database-Release/issues/11
-# Google Drive pytorch-models.zip: 1tAhZ3i4Pc_P3Fabmg62hGVHwKeSQtYaY
-RUN echo "📥 Downloading SCUT-ResNet18 model..." && \
-    gdown "https://drive.google.com/uc?id=1tAhZ3i4Pc_P3Fabmg62hGVHwKeSQtYaY" -O /tmp/pytorch-models.zip --fuzzy 2>&1 || echo "gdown failed, trying alternative..." && \
-    if [ -f /tmp/pytorch-models.zip ]; then \
-        SIZE=$(wc -c < /tmp/pytorch-models.zip); \
-        echo "📊 Downloaded file size: $SIZE bytes"; \
-        if [ "$SIZE" -gt 50000000 ]; then \
-            echo "📦 Extracting pytorch-models.zip..."; \
-            unzip -o /tmp/pytorch-models.zip -d /tmp/pytorch-models && \
-            ls -la /tmp/pytorch-models/ && \
-            if [ -f /tmp/pytorch-models/resnet18.pth ]; then \
-                mv /tmp/pytorch-models/resnet18.pth ./models/scut_resnet18.pth && \
-                FINAL_SIZE=$(wc -c < ./models/scut_resnet18.pth) && \
-                echo "✅ SCUT-ResNet18 model installed ($FINAL_SIZE bytes)"; \
-            else \
-                echo "⚠️ resnet18.pth not found in zip, listing contents:" && \
-                find /tmp/pytorch-models -type f && \
-                echo "⚠️ SCUT-ResNet18 not available"; \
-            fi; \
-            rm -rf /tmp/pytorch-models /tmp/pytorch-models.zip; \
-        else \
-            echo "⚠️ Downloaded file too small ($SIZE bytes), may be error page"; \
-            cat /tmp/pytorch-models.zip | head -c 500 || true; \
-            rm -f /tmp/pytorch-models.zip; \
-        fi; \
-    else \
-        echo "⚠️ SCUT-ResNet18 download failed - file not created"; \
-    fi
-
-# Copy local models if available (for development/testing)
-# COPY models/ ./models/
+# Verify AttractiveNet model exists
+RUN ls -lh ./models/ && \
+    test -f ./models/attractivenet_mnv2.h5 && \
+    echo "✅ AttractiveNet model found ($(stat -c%s ./models/attractivenet_mnv2.h5 2>/dev/null || stat -f%z ./models/attractivenet_mnv2.h5) bytes)" || \
+    echo "⚠️ AttractiveNet model not found - check git LFS or download manually"
 
 # Expose port
 EXPOSE 5000
