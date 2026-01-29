@@ -63,14 +63,35 @@ if [ ! -f "models/attractiveness_classifier.pt" ]; then
     #     wget "$DROPBOX_LINK" -O models/attractiveness_classifier.pt || echo "Download failed"
     # fi
     
-    if [ ! -f "models/attractiveness_classifier.pt" ]; then
+    if [ ! -f "models/attractiveness_classifier.pt" ] || [ "$(wc -c < "models/attractiveness_classifier.pt" 2>/dev/null || echo 0)" -lt 50000000 ]; then
         echo "⚠️  Beauty-classifier model not available"
-        echo "   App will work with FaceStats only (still fully functional!)"
+        echo "   App will work with other models"
+        rm -f models/attractiveness_classifier.pt 2>/dev/null
     else
         echo "✅ Beauty-classifier model downloaded successfully"
     fi
 else
     echo "✅ Beauty-classifier model already present"
+fi
+
+# Download SCUT-FBP5500 ResNet-18 model if not present (PC: 0.89 correlation)
+SCUT_FILE_ID="1tAhZ3i4Pc_P3Fabmg62hGVHwKeSQtYaY"
+if [ ! -f "models/scut_resnet18.pth" ] || [ "$(wc -c < "models/scut_resnet18.pth" 2>/dev/null || echo 0)" -lt 50000000 ]; then
+    echo "=== SCUT-ResNet18 model not found ==="
+    echo "   Attempting to download from Google Drive..."
+    pip install -q gdown 2>/dev/null
+    gdown "https://drive.google.com/uc?id=$SCUT_FILE_ID" -O /tmp/pytorch-models.zip --fuzzy 2>/dev/null || true
+    if [ -f /tmp/pytorch-models.zip ] && [ "$(wc -c < /tmp/pytorch-models.zip 2>/dev/null || echo 0)" -gt 50000000 ]; then
+        unzip -q /tmp/pytorch-models.zip -d /tmp/pytorch-models 2>/dev/null
+        mv /tmp/pytorch-models/resnet18.pth models/scut_resnet18.pth 2>/dev/null
+        rm -rf /tmp/pytorch-models /tmp/pytorch-models.zip
+        echo "✅ SCUT-ResNet18 model downloaded successfully"
+    else
+        echo "⚠️  SCUT-ResNet18 download failed - will use other models"
+        rm -f /tmp/pytorch-models.zip 2>/dev/null
+    fi
+else
+    echo "✅ SCUT-ResNet18 model already present"
 fi
 
 echo "=== Build complete ==="
