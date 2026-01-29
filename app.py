@@ -2200,8 +2200,8 @@ def calculate_attractiveness_score(image_array):
     print("\n📊 Attempting SCUT-ResNet18 scoring...")
     scut_score = calculate_scut_resnet18_score(image_array)
     if scut_score is not None:
-        scores.append(('scut_resnet18', scut_score, 0.25))  # Weight 0.25 (lowest - always gives ~50, poor discrimination)
-        print(f"✅ SCUT-ResNet18 contributed: {scut_score:.1f} (weight: 0.25)")
+        scores.append(('scut_resnet18', scut_score, 0.1))  # Weight 0.1 (minimal - always gives ~50, no discrimination)
+        print(f"✅ SCUT-ResNet18 contributed: {scut_score:.1f} (weight: 0.1)")
     else:
         print("❌ SCUT-ResNet18: No score (model not found or error)")
     
@@ -2209,8 +2209,8 @@ def calculate_attractiveness_score(image_array):
     print("\n📊 Attempting Beauty-classifier scoring...")
     beauty_score = calculate_beauty_classifier_score(image_array)
     if beauty_score is not None:
-        scores.append(('beauty_classifier', beauty_score, 0.5))  # Weight 0.5 (low - poor discrimination)
-        print(f"✅ Beauty-classifier contributed: {beauty_score:.1f} (weight: 0.5)")
+        scores.append(('beauty_classifier', beauty_score, 0.1))  # Weight 0.1 (minimal - always gives ~50, no discrimination)
+        print(f"✅ Beauty-classifier contributed: {beauty_score:.1f} (weight: 0.1)")
     else:
         print("❌ Beauty-classifier: No score (model not found or error)")
     
@@ -2472,7 +2472,7 @@ def calculate_facestats_score(image_array):
             # - Output range 5-95 (full spread)
             
             center = 1.85  # Center point (calibrated to actual model output range)
-            steepness = 7.0  # Steepness factor (high - model outputs narrow range, need amplification)
+            steepness = 10.0  # Steepness factor (very high - model outputs narrow range, need max amplification)
             
             # Sigmoid: 1 / (1 + exp(-steepness * (raw - center)))
             # This maps: raw < center → lower score, raw > center → higher score
@@ -2481,12 +2481,13 @@ def calculate_facestats_score(image_array):
             sigmoid = 1.0 / (1.0 + np.exp(-steepness * (raw_score - center)))
             
             # Map sigmoid (0-1) to 5-95 range for maximum spread
-            # raw=1.65 → sigmoid≈0.20 → score≈23
-            # raw=1.75 → sigmoid≈0.33 → score≈35
-            # raw=1.85 → sigmoid=0.50 → score=50
-            # raw=1.95 → sigmoid≈0.67 → score≈65
-            # raw=2.10 → sigmoid≈0.85 → score≈82
-            # raw=2.30 → sigmoid≈0.96 → score≈91
+            # With steepness=10, small raw differences create big score gaps:
+            # raw=1.65 → sigmoid≈0.12 → score≈16
+            # raw=1.73 → sigmoid≈0.23 → score≈26 (ugly)
+            # raw=1.85 → sigmoid=0.50 → score=50 (average)
+            # raw=1.92 → sigmoid≈0.67 → score≈65 (attractive)
+            # raw=2.05 → sigmoid≈0.88 → score≈84 (very attractive)
+            # raw=2.20 → sigmoid≈0.97 → score≈92 (model-tier)
             score = 5.0 + (sigmoid * 90.0)  # 0→5, 1→95
             score = float(np.clip(score, 0.0, 100.0))
             
