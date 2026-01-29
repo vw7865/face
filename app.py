@@ -41,22 +41,31 @@ def check_deepface_available():
             print("WARNING: DeepFace not available. Gender detection will fall back to user input.")
     return DEEPFACE_AVAILABLE
 
-# FaceStats-style attractiveness scoring (CLIP + MLP) - lazy import
+# AttractiveNet - MobileNetV2 trained on SCUT-FBP5500 (output: 1.0-5.0)
+# Much better score distribution than FaceStats (which outputs narrow 1.7-2.0 range)
+ATTRACTIVENET_AVAILABLE = None
+def check_attractivenet_available():
+    """Lazy check for AttractiveNet (TensorFlow/Keras) dependencies"""
+    global ATTRACTIVENET_AVAILABLE
+    if ATTRACTIVENET_AVAILABLE is None:
+        try:
+            import tensorflow as tf
+            from tensorflow import keras
+            ATTRACTIVENET_AVAILABLE = True
+            print("AttractiveNet (TensorFlow/Keras) available for attractiveness scoring")
+        except ImportError:
+            ATTRACTIVENET_AVAILABLE = False
+            print("WARNING: AttractiveNet dependencies (tensorflow) not available.")
+    return ATTRACTIVENET_AVAILABLE
+
+# Legacy FaceStats check (kept for backwards compatibility, but not used)
 ATTRACTIVENESS_AVAILABLE = None
 def check_attractiveness_available():
-    """Lazy check for FaceStats dependencies"""
+    """Legacy check for FaceStats - deprecated, use AttractiveNet instead"""
     global ATTRACTIVENESS_AVAILABLE
     if ATTRACTIVENESS_AVAILABLE is None:
-        try:
-            import torch
-            from transformers import CLIPProcessor, CLIPModel
-            import torch.nn as nn
-            import joblib
-            ATTRACTIVENESS_AVAILABLE = True
-            print("FaceStats-style attractiveness scoring available")
-        except ImportError:
-            ATTRACTIVENESS_AVAILABLE = False
-            print("WARNING: FaceStats attractiveness scoring dependencies not available.")
+        ATTRACTIVENESS_AVAILABLE = False  # Disabled - using AttractiveNet instead
+        print("FaceStats disabled - using AttractiveNet (MobileNetV2) instead")
     return ATTRACTIVENESS_AVAILABLE
 
 # Beauty-classifier (ResNet-50 on SCUT-FBP5500) - lazy import
@@ -116,23 +125,20 @@ CORS(app)
 _MODEL_LOADING_STATUS = {
     'mediapipe': False,
     'deepface': False,
-    'clip': False,
-    'facestats_regressor': False,
+    'attractivenet': False,  # AttractiveNet (MobileNetV2 on SCUT-FBP5500)
     'beauty_classifier': False,
     'loading': False,
     'error': None
 }
 
 # Global model variables (preloaded)
-_CLIP_MODEL = None
-_CLIP_PROCESSOR = None
-_FACESTATS_REGRESSOR = None
+_ATTRACTIVENET_MODEL = None  # AttractiveNet (MobileNetV2, output: 1.0-5.0)
 _BEAUTY_CLASSIFIER_MODEL = None
 _SCUT_RESNET18_MODEL = None  # SCUT-FBP5500 trained ResNet-18 (PC: 0.89)
 
 def preload_models():
     """Preload all ML models in background to make first request fast"""
-    global _MODEL_LOADING_STATUS, _CLIP_MODEL, _CLIP_PROCESSOR, _FACESTATS_REGRESSOR, _BEAUTY_CLASSIFIER_MODEL
+    global _MODEL_LOADING_STATUS, _ATTRACTIVENET_MODEL, _BEAUTY_CLASSIFIER_MODEL
     
     if _MODEL_LOADING_STATUS['loading']:
         return  # Already loading
@@ -168,79 +174,41 @@ def preload_models():
         except Exception as e:
             print(f"⚠️ DeepFace preload failed: {e}")
         
-        # 3. Preload CLIP model (slow, ~20-30 seconds)
-        print("\n📦 Preloading CLIP model (this may take 20-30s)...")
+        # 3. Preload AttractiveNet (MobileNetV2 on SCUT-FBP5500) - fast, ~3-5 seconds
+        # This replaces FaceStats (CLIP + MLP) which had narrow output range (1.7-2.0)
+        # AttractiveNet outputs 1.0-5.0 range with much better discrimination
+        print("\n📦 Preloading AttractiveNet (MobileNetV2, SCUT-FBP5500)...")
         try:
-            if check_attractiveness_available():
-                from transformers import CLIPProcessor, CLIPModel
-                import torch
-                _CLIP_MODEL = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-                _CLIP_PROCESSOR = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-                _CLIP_MODEL.eval()
-                _MODEL_LOADING_STATUS['clip'] = True
-                print("✅ CLIP model preloaded")
-            else:
-                print("⚠️ CLIP dependencies not available")
-        except Exception as e:
-            print(f"⚠️ CLIP preload failed: {e}")
-        
-        # 4. Preload FaceStats regressor (fast, ~1-2 seconds)
-        print("\n📦 Preloading FaceStats regressor...")
-        try:
-            if check_attractiveness_available() and _MODEL_LOADING_STATUS['clip']:
+            if check_attractivenet_available():
                 from pathlib import Path
-                import torch
-                import torch.nn as nn
-                
-                # Define AttractivenessRegressorV1
-                # ACTUAL MODEL STRUCTURE (from inspection):
-                # net.0: Linear(512, 256)
-                # net.1: ReLU
-                # net.2: Dropout (no params in eval mode, not in state_dict)
-                # net.3: Linear(256, 256) - NOT 256→64!
-                # net.4: ReLU
-                # net.5: Linear(256, 1) - NOT 64→1!
-                class AttractivenessRegressorV1(nn.Module):
-                    def __init__(self, input_dim=512, hidden1=256, hidden2=256):
-                        super().__init__()
-                        # net.2 is Dropout - has no parameters in eval mode
-                        self.net = nn.Sequential(
-                            nn.Linear(input_dim, hidden1),  # net.0: 512 → 256
-                            nn.ReLU(),                      # net.1: ReLU
-                            nn.Dropout(0.0),               # net.2: Dropout (disabled in eval)
-                            nn.Linear(hidden1, hidden2),   # net.3: 256 → 256
-                            nn.ReLU(),                      # net.4: ReLU
-                            nn.Linear(hidden2, 1),         # net.5: 256 → 1
-                        )
-                    def forward(self, x):
-                        return self.net(x)
+                import tensorflow as tf
+                from tensorflow import keras
                 
                 base_path = Path(__file__).parent
-                model_path = base_path / "models" / "attractiveness_regressor.pt"
-                if not model_path.exists():
-                    model_path = base_path / "facestats" / "models" / "attractiveness_regressor.pt"
+                model_path = base_path / "models" / "attractivenet_mnv2.h5"
                 
                 if model_path.exists():
-                    # Load with strict=False for inspection
-                    _FACESTATS_REGRESSOR = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=256)
-                    state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
+                    # Suppress TF warnings during load
+                    import logging
+                    logging.getLogger('tensorflow').setLevel(logging.ERROR)
                     
-                    # Inspect structure during preload
-                    print("\n🔍 PRELOAD: Inspecting FaceStats model structure:")
-                    for key in sorted(state_dict.keys()):
-                        shape = state_dict[key].shape if hasattr(state_dict[key], 'shape') else 'N/A'
-                        print(f"  {key}: {shape}")
+                    _ATTRACTIVENET_MODEL = keras.models.load_model(str(model_path), compile=False)
+                    _MODEL_LOADING_STATUS['attractivenet'] = True
                     
-                    _FACESTATS_REGRESSOR.eval()  # Set to eval mode (Dropout disabled)
-                    _FACESTATS_REGRESSOR.load_state_dict(state_dict, strict=True)
-                    _MODEL_LOADING_STATUS['facestats_regressor'] = True
-                    print("✅ FaceStats regressor preloaded (architecture fixed, strict=True)")
+                    # Log model info
+                    size_mb = model_path.stat().st_size / (1024 * 1024)
+                    print(f"✅ AttractiveNet preloaded ({size_mb:.1f} MB)")
+                    print(f"   Input shape: {_ATTRACTIVENET_MODEL.input_shape}")
+                    print(f"   Output: 1.0-5.0 (SCUT-FBP5500 attractiveness scale)")
                 else:
-                    print("⚠️ FaceStats regressor model file not found")
+                    print(f"⚠️ AttractiveNet model not found at {model_path}")
+                    print("   Run: python download_attractivenet.py to download")
             else:
-                print("⚠️ FaceStats regressor: CLIP not available")
+                print("⚠️ AttractiveNet dependencies (tensorflow) not available")
         except Exception as e:
-            print(f"⚠️ FaceStats regressor preload failed: {e}")
+            print(f"⚠️ AttractiveNet preload failed: {e}")
+            import traceback
+            traceback.print_exc()
         
         # 5. Preload Beauty-classifier (fast, ~2-3 seconds)
         print("\n📦 Preloading Beauty-classifier...")
@@ -2004,86 +1972,52 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
         # Note: This is kept for fallback only - ML models are primary
         geometric_psl = (eyes_avg + midface_avg + lower_third_avg + upper_third_avg + misc_avg) / 5.0
         
-        # Calculate holistic attractiveness score using multiple models (FaceStats + Beauty-classifier)
-        # This provides a more robust, modern attractiveness score with calibration
-        # ML models are trained on human-rated attractiveness data and are more accurate than geometric measurements
+        # Calculate holistic attractiveness score using AttractiveNet (MobileNetV2 on SCUT-FBP5500)
+        # AttractiveNet outputs 1-5 scale (converted to 0-100) with excellent discrimination
+        # Unlike FaceStats (which output narrow 1.7-2.0 range), AttractiveNet uses full 1-5 range
         attractiveness_result = None
         attractiveness_score = None
-        facestats_only = False
         model_count = 0
         if front_image_array is not None:
             attractiveness_result = calculate_attractiveness_score(front_image_array)
             if attractiveness_result is not None:
-                # Unpack the tuple: (score, model_count, facestats_only_flag)
-                attractiveness_score, model_count, facestats_only = attractiveness_result
+                # Unpack the tuple: (score, model_count, _)
+                attractiveness_score, model_count, _ = attractiveness_result
         
-        # HYBRID SCORING: 50% ML + 50% Geometry with sanity checks
-        # This ensures:
-        # 1. Poor bone structure cannot be rated "Chad" regardless of ML score
-        # 2. Good bone structure + good ML = high score
-        # 3. Subscores (geometric) actually influence the overall rating
+        # HYBRID SCORING: 80% ML + 20% Geometry (AttractiveNet has excellent discrimination)
+        # AttractiveNet is trained on human-rated attractiveness data and has good separation:
+        # - Unattractive faces: SCUT ~1.5-2.5 → 0-100 scale: 12-37
+        # - Average faces: SCUT ~2.5-3.5 → 0-100 scale: 37-62  
+        # - Attractive faces: SCUT ~3.5-4.5 → 0-100 scale: 62-87
+        # - Very attractive: SCUT ~4.5-5.0 → 0-100 scale: 87-100
         if attractiveness_score is not None:
             print(f"\n🔍 SCORING INPUTS:")
-            print(f"   Raw ML score: {attractiveness_score:.1f}")
-            print(f"   Raw Geometric score: {geometric_psl:.1f}")
-            print(f"   Models used: {model_count} ({'FaceStats-only' if facestats_only else 'Multi-model ensemble'})")
+            print(f"   AttractiveNet ML score: {attractiveness_score:.1f}")
+            print(f"   Geometric score: {geometric_psl:.1f}")
             
-            # SANITY CHECK: Cap ML score based on geometric foundation
-            # Someone with poor bone structure cannot be a Chad regardless of soft features
+            # SANITY CHECK: Light caps only for extreme cases
+            # AttractiveNet is trustworthy, so we only cap in extreme geometry cases
             adjusted_ml = attractiveness_score
             
-            # STRICTER CAPS when only FaceStats is available (unreliable for PSL)
-            # FaceStats tends to give inflated scores for unattractive faces
-            if facestats_only:
-                print(f"   ⚠️ FaceStats-only mode: Applying stricter caps (FaceStats overrates unattractive faces)")
-                if geometric_psl < 45:
-                    # Very poor geometry - hard cap to average
-                    adjusted_ml = min(attractiveness_score, 45.0)
-                    print(f"   ⚠️ [FaceStats-only] Geometric < 45: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
-                elif geometric_psl < 55:
-                    # Below average geometry - tighter cap
-                    adjusted_ml = min(attractiveness_score, geometric_psl + 5)
-                    print(f"   ⚠️ [FaceStats-only] Geometric < 55: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
-                elif geometric_psl < 65:
-                    # Average geometry - moderate cap
-                    adjusted_ml = min(attractiveness_score, geometric_psl + 10)
-                    print(f"   ⚠️ [FaceStats-only] Geometric < 65: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
-                else:
-                    # Good geometry - allow some boost but still cap
-                    adjusted_ml = min(attractiveness_score, geometric_psl + 15)
-                    print(f"   ⚠️ [FaceStats-only] Geometric >= 65: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
-            else:
-                # Multi-model ensemble: original caps (more trustworthy)
-                if geometric_psl < 40:
-                    # Very poor geometry (subhuman/LTN territory) - hard cap ML
-                    adjusted_ml = min(attractiveness_score, 50.0)
-                    print(f"   ⚠️ Geometric < 40: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
-                elif geometric_psl < 50:
-                    # Below average geometry (LTN/MTN-) - cap ML to normie range
-                    adjusted_ml = min(attractiveness_score, geometric_psl + 12)
-                    print(f"   ⚠️ Geometric < 50: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
-                elif geometric_psl < 60:
-                    # Average geometry (MTN territory) - ML can exceed geometry by limited amount
-                    adjusted_ml = min(attractiveness_score, geometric_psl + 18)
-                    print(f"   ⚠️ Geometric < 60: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
-                # Above 60 geometric: no cap - good bone structure can have high ML
+            if geometric_psl < 30:
+                # Very poor geometry (subhuman) - cap ML to prevent overrating
+                adjusted_ml = min(attractiveness_score, 45.0)
+                print(f"   ⚠️ Geometric < 30: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
+            elif geometric_psl < 40:
+                # Poor geometry - allow up to average
+                adjusted_ml = min(attractiveness_score, geometric_psl + 20)
+                print(f"   ⚠️ Geometric < 40: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
+            # Above 40 geometric: no cap - AttractiveNet is trustworthy
             
-            # HYBRID FORMULA: Weight ML more heavily since FaceStats has best discrimination
-            if facestats_only:
-                # 30% ML + 70% geometry when only FaceStats available (less reliable)
-                psl = 0.30 * adjusted_ml + 0.70 * geometric_psl
-                print(f"\n🎯 FINAL PSL: {psl:.1f} (30% ML + 70% Geometry - FaceStats-only mode)")
-            else:
-                # 70% ML + 30% geometry for multi-model ensemble (FaceStats-weighted)
-                psl = 0.70 * adjusted_ml + 0.30 * geometric_psl
-                print(f"\n🎯 FINAL PSL: {psl:.1f} (70% ML + 30% Geometry hybrid)")
+            # HYBRID FORMULA: 80% ML + 20% Geometry (AttractiveNet is primary)
+            # This weights ML heavily because AttractiveNet has excellent discrimination
+            # Geometry provides a floor/sanity check but doesn't dominate
+            psl = 0.80 * adjusted_ml + 0.20 * geometric_psl
             
-            print(f"   Adjusted ML: {adjusted_ml:.1f} (after sanity check)")
+            print(f"\n🎯 FINAL PSL: {psl:.1f} (80% AttractiveNet + 20% Geometry)")
+            print(f"   Adjusted ML: {adjusted_ml:.1f}")
             print(f"   Geometric: {geometric_psl:.1f}")
-            if facestats_only:
-                print(f"   Formula: 0.30 × {adjusted_ml:.1f} + 0.70 × {geometric_psl:.1f} = {psl:.1f}")
-            else:
-                print(f"   Formula: 0.70 × {adjusted_ml:.1f} + 0.30 × {geometric_psl:.1f} = {psl:.1f}")
+            print(f"   Formula: 0.80 × {adjusted_ml:.1f} + 0.20 × {geometric_psl:.1f} = {psl:.1f}")
         else:
             # Fallback to geometric if ML models fail
             psl = geometric_psl
@@ -2179,332 +2113,132 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
 
 def calculate_attractiveness_score(image_array):
     """
-    Calculate holistic attractiveness score using multiple models for stability:
-    1. FaceStats (CLIP + MLP) - if available
-    2. Beauty-classifier (ResNet-50 on SCUT-FBP5500) - for calibration
+    Calculate holistic attractiveness score using AttractiveNet (MobileNetV2 on SCUT-FBP5500).
     
-    Returns average of available models, or None if none available.
-    Based on:
-    - FaceStats: https://github.com/jayklarin/FaceStats
-    - Beauty-classifier: https://github.com/okurki/beauty-classifier
+    AttractiveNet outputs raw scores in 1.0-5.0 range (SCUT-FBP5500 scale).
+    This is then converted to 0-100 scale for compatibility with the rest of the system.
+    
+    Score mapping (SCUT 1-5 to 0-100):
+    - 1.0 = 0 (lowest)
+    - 2.0 = 25
+    - 3.0 = 50 (average)
+    - 4.0 = 75
+    - 5.0 = 100 (highest)
+    
+    PSL mapping (via ScaleManager):
+    - 0-100 maps to PSL 0-8
+    - Score 50 (SCUT 3.0) = PSL 4.0 = MTN
+    - Score 75 (SCUT 4.0) = PSL 6.0 = Chadlite
+    - Score 100 (SCUT 5.0) = PSL 8.0 = Chad
+    
+    Based on: https://github.com/gustavz/AttractiveNet
     """
     print("\n" + "="*60)
-    print("🎯 ATTRACTIVENESS SCORING - Starting ensemble prediction")
+    print("🎯 ATTRACTIVENESS SCORING - AttractiveNet (MobileNetV2)")
     print("="*60)
     
-    # Models are preloaded at startup - no need to load here
-
-    scores = []
+    # Try AttractiveNet (PRIMARY - has 4x better discrimination than FaceStats)
+    print("\n📊 Attempting AttractiveNet scoring...")
+    attractivenet_score = calculate_attractivenet_score(image_array)
     
-    # Try SCUT-ResNet18 (trained on Chinese faces - poor discrimination, tends to give ~50)
-    print("\n📊 Attempting SCUT-ResNet18 scoring...")
-    scut_score = calculate_scut_resnet18_score(image_array)
-    if scut_score is not None:
-        scores.append(('scut_resnet18', scut_score, 0.1))  # Weight 0.1 (minimal - always gives ~50, no discrimination)
-        print(f"✅ SCUT-ResNet18 contributed: {scut_score:.1f} (weight: 0.1)")
-    else:
-        print("❌ SCUT-ResNet18: No score (model not found or error)")
-    
-    # Try Beauty-classifier (ResNet-50 on SCUT-FBP5500) - poor discrimination, gives ~50
-    print("\n📊 Attempting Beauty-classifier scoring...")
-    beauty_score = calculate_beauty_classifier_score(image_array)
-    if beauty_score is not None:
-        scores.append(('beauty_classifier', beauty_score, 0.1))  # Weight 0.1 (minimal - always gives ~50, no discrimination)
-        print(f"✅ Beauty-classifier contributed: {beauty_score:.1f} (weight: 0.1)")
-    else:
-        print("❌ Beauty-classifier: No score (model not found or error)")
-    
-    # Try FaceStats (CLIP + MLP) - HIGHEST priority due to best discrimination
-    print("\n📊 Attempting FaceStats scoring...")
-    facestats_score = calculate_facestats_score(image_array)
-    if facestats_score is not None:
-        scores.append(('facestats', facestats_score, 3.0))  # Weight 3.0 (highest - only model with real discrimination)
-        print(f"✅ FaceStats contributed: {facestats_score:.1f} (weight: 3.0)")
-    else:
-        print("❌ FaceStats: No score (model not found or error)")
-    
-    # Return weighted average if we have at least one score
-    if scores:
-        # Calculate weighted average
-        total_weight = sum(weight for _, _, weight in scores)
-        weighted_sum = sum(score * weight for _, score, weight in scores)
-        avg_score = weighted_sum / total_weight
-        
-        # Track model info for caller to apply appropriate sanity checks
-        model_count = len(scores)
-        models_used = [name for name, _, _ in scores]
-        facestats_only = (model_count == 1 and models_used[0] == 'facestats')
-        
-        print(f"\n🎯 Ensemble Result: {avg_score:.1f} (weighted avg from {model_count} model(s))")
-        print(f"   Models used: {', '.join(models_used)}")
-        print(f"   Individual scores: {', '.join(f'{name}={score:.1f}' for name, score, _ in scores)}")
-        if facestats_only:
-            print(f"   ⚠️ WARNING: FaceStats-only mode - stricter sanity checks will apply")
+    if attractivenet_score is not None:
+        print(f"\n🎯 AttractiveNet Result: {attractivenet_score:.1f} (0-100 scale)")
+        print(f"   Model: MobileNetV2 trained on SCUT-FBP5500")
+        print(f"   Raw SCUT score: {(attractivenet_score / 25.0) + 1.0:.2f} (1-5 scale)")
         print("="*60 + "\n")
         
-        # Return tuple: (score, model_count, facestats_only_flag)
-        return (avg_score, model_count, facestats_only)
+        # Return tuple: (score, model_count=1, attractivenet_primary=True)
+        return (attractivenet_score, 1, False)  # False = not "facestats_only" (no special caps needed)
     
-    print("\n⚠️  No ML attractiveness scores available - using geometric only")
+    print("\n⚠️ AttractiveNet not available - using geometric only")
     print("="*60 + "\n")
     return None
 
-def calculate_facestats_score(image_array):
-    """Calculate attractiveness using FaceStats (CLIP + MLP)"""
+
+def calculate_attractivenet_score(image_array):
+    """
+    Calculate attractiveness using AttractiveNet (MobileNetV2 on SCUT-FBP5500).
+    
+    Input: RGB image array (any size - will be resized to 350x350)
+    Output: Score from 0-100 (converted from SCUT 1-5 range)
+    
+    The model was trained on SCUT-FBP5500 dataset with 5500 faces rated 1-5 by 60 volunteers.
+    RMSE: 0.286, MAE: 0.212 (very good for this task)
+    """
+    global _ATTRACTIVENET_MODEL
+    
     try:
-        if not check_attractiveness_available():
-            print("⚠️ FaceStats: Dependencies not available (torch/transformers)")
+        if not check_attractivenet_available():
+            print("⚠️ AttractiveNet: TensorFlow not available")
             return None
         
-        # IMPORT TORCH FIRST - this was missing!
-        import torch
-        import torch.nn as nn
-        import sys
-        from pathlib import Path
-        import tempfile
-        import os
-        
-        print("🔍 FaceStats: Starting model loading...")
-        
-        # Add FaceStats src to path (optional, for imports)
-        facestats_path = Path(__file__).parent / "facestats" / "src"
-        if str(facestats_path) not in sys.path:
-            sys.path.insert(0, str(facestats_path))
-        
-        # Define CLIP embedding function directly to avoid polars dependency
-        # Use module-level globals for CLIP model (lazy loading)
-        # Note: _CLIP_MODEL and _CLIP_PROCESSOR are defined at module level above
-        def get_clip_embedding_local(image_path, model_name="openai/clip-vit-base-patch32"):
-            """Extract CLIP embedding for an image (L2-normalized) - uses preloaded model"""
-            global _CLIP_MODEL, _CLIP_PROCESSOR
+        if _ATTRACTIVENET_MODEL is None:
+            # Try to load on demand
+            from pathlib import Path
+            from tensorflow import keras
             
-            # Use preloaded models if available
-            if _CLIP_MODEL is None or _CLIP_PROCESSOR is None:
-                # Fallback: load on demand (slower, but works if preload failed)
-                print("⚠️ CLIP models not preloaded, loading on demand...")
-                from transformers import CLIPProcessor, CLIPModel
-                _CLIP_MODEL = CLIPModel.from_pretrained(model_name)
-                _CLIP_PROCESSOR = CLIPProcessor.from_pretrained(model_name)
-                _CLIP_MODEL.eval()
-            
-            img = Image.open(image_path).convert("RGB")
-            inputs = _CLIP_PROCESSOR(images=img, return_tensors="pt")
-            pixel_values = inputs.get("pixel_values")
-            with torch.no_grad():
-                raw = _CLIP_MODEL.get_image_features(**inputs)
-            # Some envs return BaseModelOutputWithPooling (no .shape); others return tensor.
-            # FaceStats regressor needs 512-d. Get tensor and ensure 512-d.
-            if not hasattr(raw, "shape"):
-                # get_image_features returned an object: compute 512-d via vision_model + visual_projection
-                if pixel_values is not None:
-                    vision_outputs = _CLIP_MODEL.vision_model(pixel_values=pixel_values)
-                    pooled = getattr(vision_outputs, "pooler_output", None)
-                    if pooled is None:
-                        pooled = vision_outputs[0]  # Use first element if no pooler_output
-                    features = _CLIP_MODEL.visual_projection(pooled)
-                else:
-                    raise RuntimeError("CLIP get_image_features returned non-tensor and no pixel_values")
-            elif raw.shape[-1] != 512:
-                # Wrong length: compute 512-d via vision_model + visual_projection
-                if pixel_values is not None:
-                    vision_outputs = _CLIP_MODEL.vision_model(pixel_values=pixel_values)
-                    pooled = getattr(vision_outputs, "pooler_output", None)
-                    if pooled is None:
-                        pooled = vision_outputs[0]  # Use first element if no pooler_output
-                    features = _CLIP_MODEL.visual_projection(pooled)
-                else:
-                    features = raw.view(1, -1)[:, :512]
-            else:
-                features = raw
-            vec = features[0].detach().cpu().numpy()
-            return vec / (np.linalg.norm(vec) + 1e-8)
-        
-        # Define AttractivenessRegressorV1 directly to avoid polars dependency
-        # ACTUAL MODEL STRUCTURE (from inspection):
-        # net.0: Linear(512, 256)
-        # net.1: ReLU
-        # net.2: Dropout (no params in eval mode, not in state_dict)
-        # net.3: Linear(256, 256) - NOT 256→64!
-        # net.4: ReLU
-        # net.5: Linear(256, 1) - NOT 64→1!
-        class AttractivenessRegressorV1(nn.Module):
-            """Actual model: 512 → 256 → 256 → 1 (matches saved checkpoint)"""
-            def __init__(self, input_dim=512, hidden1=256, hidden2=256):
-                super().__init__()
-                # net.2 is Dropout - has no parameters in eval mode, so not in state_dict
-                # But we need it in Sequential for layer indices to match!
-                self.net = nn.Sequential(
-                    nn.Linear(input_dim, hidden1),  # net.0: 512 → 256
-                    nn.ReLU(),                      # net.1: ReLU
-                    nn.Dropout(0.0),               # net.2: Dropout (disabled in eval, no params)
-                    nn.Linear(hidden1, hidden2),   # net.3: 256 → 256
-                    nn.ReLU(),                      # net.4: ReLU
-                    nn.Linear(hidden2, 1),         # net.5: 256 → 1
-                )
-            def forward(self, x):
-                return self.net(x)
-        
-        # Initialize CLIP globals
-        _CLIP_MODEL = None
-        _CLIP_PROCESSOR = None
-        
-        # Convert numpy array to PIL Image
-        from PIL import Image
-        if isinstance(image_array, np.ndarray):
-            # Convert BGR to RGB if needed
-            if len(image_array.shape) == 3 and image_array.shape[2] == 3:
-                rgb_image = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
-            else:
-                rgb_image = image_array
-            pil_image = Image.fromarray(rgb_image)
-        else:
-            pil_image = image_array
-        
-        # Save temporarily to use get_clip_embedding (expects file path)
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_file:
-            pil_image.save(tmp_file.name, 'JPEG')
-            tmp_path = tmp_file.name
-        
-        try:
-            # Extract CLIP embedding (512-D, L2-normalized)
-            embedding = get_clip_embedding_local(tmp_path)
-            embedding = np.array(embedding).reshape(1, -1)
-            
-            # Debug: Check embedding norm (should be ~1.0 if L2-normalized)
-            embedding_norm = np.linalg.norm(embedding)
-            print(f"🔍 FaceStats: CLIP embedding norm = {embedding_norm:.4f} (should be ~1.0)")
-            if abs(embedding_norm - 1.0) > 0.1:
-                print(f"   ⚠️ WARNING: Embedding norm is not close to 1.0 - normalization may be wrong!")
-            
-            # Load attractiveness regressor - check multiple possible locations
             base_path = Path(__file__).parent
-            possible_paths = [
-                base_path / "models" / "attractiveness_regressor.pt",  # Primary: direct models folder
-                base_path / "facestats" / "models" / "attractiveness_regressor.pt",
-                base_path / "facestats" / "src" / "models" / "attractiveness_regressor.pt",
-                base_path / "src_facestats_models" / "attractiveness_regressor.pt",
-            ]
+            model_path = base_path / "models" / "attractivenet_mnv2.h5"
             
-            model_path = None
-            print(f"🔍 FaceStats: Checking {len(possible_paths)} possible model locations...")
-            for path in possible_paths:
-                abs_path = path.resolve()
-                exists = path.exists()
-                print(f"   {'✅' if exists else '❌'} {abs_path}")
-                if exists:
-                    model_path = path
-                    size_bytes = path.stat().st_size
-                    size_mb = size_bytes / (1024 * 1024)
-                    if size_bytes == 0:
-                        print(f"⚠️ FaceStats: Model file exists but is 0 bytes! This might be a Git LFS issue.")
-                    print(f"✅ FaceStats: Model found at {abs_path} ({size_mb:.1f} MB)")
-                    break
-            
-            if model_path is None:
-                print(f"❌ FaceStats: Model not found in any location!")
-                print(f"   Checked paths:")
-                for p in possible_paths:
-                    print(f"     - {p.resolve()}")
+            if not model_path.exists():
+                print(f"⚠️ AttractiveNet: Model not found at {model_path}")
                 return None
             
-            # Use preloaded model if available, otherwise load on demand
-            global _FACESTATS_REGRESSOR
-            if _FACESTATS_REGRESSOR is None:
-                print(f"📦 FaceStats: Loading model from {model_path.name} (not preloaded)...")
-                
-                # Step 1: Load state_dict to inspect actual structure
-                state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
-                
-                # Step 2: Inspect actual model structure
-                print("\n🔍 INSPECTING MODEL STRUCTURE:")
-                print("="*60)
-                for key in sorted(state_dict.keys()):
-                    shape = state_dict[key].shape if hasattr(state_dict[key], 'shape') else 'N/A'
-                    print(f"  {key}: {shape}")
-                print("="*60 + "\n")
-                
-                # Step 3: Load with strict=True now that architecture matches
-                regressor = AttractivenessRegressorV1(input_dim=512, hidden1=256, hidden2=256)
-                regressor.eval()  # Set to eval mode before loading (Dropout disabled)
-                regressor.load_state_dict(state_dict, strict=True)
-                _FACESTATS_REGRESSOR = regressor
-                print("✅ FaceStats: Model loaded successfully (strict=True, architecture fixed)")
-            else:
-                regressor = _FACESTATS_REGRESSOR
-                print("✅ FaceStats: Using preloaded model")
-            
-            # Predict attractiveness (raw score)
-            print("🔮 FaceStats: Running prediction...")
-            with torch.no_grad():
-                embedding_tensor = torch.FloatTensor(embedding)
-                prediction = regressor(embedding_tensor)
-                raw_score = prediction.item()
-            print(f"📊 FaceStats: Raw prediction = {raw_score:.4f}")
-            
-            # FaceStats model outputs raw regression scores that need proper normalization
-            # Based on FaceStats training data, raw scores are typically in range 2.0-4.0
-            # Training data sample: [3.16, 3.04, 2.77, 2.99, 3.15, 3.35, 3.15, 3.39, 3.16, 3.14]
-            # Mean ≈ 3.1, Range ≈ 2.0-4.0
-            # 
-            # We need to map this to 0-100 scale:
-            # - 2.0 (lowest) → 0
-            # - 3.0 (average) → 50  
-            # - 4.0 (highest) → 100
-            
-            # SIMPLE, ROBUST NORMALIZATION: Use sigmoid-based mapping for better separation
-            # The model IS working (raw scores differ: 2.40 vs 2.60), but we need proper scaling
-            # 
-            # Based on observed scores:
-            # - Attractive faces: raw ~2.0-2.4 → should score 70-85
-            # - Average faces: raw ~2.5-2.7 → should score 40-60
-            # CALIBRATED TO ACTUAL MODEL OUTPUT RANGE
-            # Based on observed data, FaceStats outputs scores in narrow 1.6-2.2 range:
-            # - Unattractive: raw ~1.65-1.75 → should score 15-30
-            # - Below-average: raw ~1.75-1.85 → should score 30-45
-            # - Average: raw ~1.85-1.95 → should score 45-55
-            # - Above-average: raw ~1.95-2.10 → should score 55-72
-            # - Attractive: raw ~2.10-2.30 → should score 72-88
-            # - Very attractive: raw ~2.30+ → should score 88-95
-            #
-            # Use sigmoid function calibrated to actual model outputs:
-            # - Center at 1.85 (the actual "average" the model produces)
-            # - Steepness at 7.0 (very sharp - amplify small differences)
-            # - Output range 5-95 (full spread)
-            
-            center = 1.85  # Center point (calibrated to actual model output range)
-            steepness = 10.0  # Steepness factor (very high - model outputs narrow range, need max amplification)
-            
-            # Sigmoid: 1 / (1 + exp(-steepness * (raw - center)))
-            # This maps: raw < center → lower score, raw > center → higher score
-            # CRITICAL: raw_score - center (NOT center - raw_score)
-            # On 1-5 scale: 1=ugly, 5=beautiful, so higher raw = higher final score
-            sigmoid = 1.0 / (1.0 + np.exp(-steepness * (raw_score - center)))
-            
-            # Map sigmoid (0-1) to 5-95 range for maximum spread
-            # With steepness=10, small raw differences create big score gaps:
-            # raw=1.65 → sigmoid≈0.12 → score≈16
-            # raw=1.73 → sigmoid≈0.23 → score≈26 (ugly)
-            # raw=1.85 → sigmoid=0.50 → score=50 (average)
-            # raw=1.92 → sigmoid≈0.67 → score≈65 (attractive)
-            # raw=2.05 → sigmoid≈0.88 → score≈84 (very attractive)
-            # raw=2.20 → sigmoid≈0.97 → score≈92 (model-tier)
-            score = 5.0 + (sigmoid * 90.0)  # 0→5, 1→95
-            score = float(np.clip(score, 0.0, 100.0))
-            
-            print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f} on 1-5 scale, center={center}, steepness={steepness})")
-            print(f"   Sigmoid value: {sigmoid:.3f} (raw < {center} → low score, raw > {center} → high score)")
-            return score
-            
-        finally:
-            # Clean up temp file
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+            print("📦 Loading AttractiveNet on demand...")
+            _ATTRACTIVENET_MODEL = keras.models.load_model(str(model_path), compile=False)
+        
+        # Preprocess image for AttractiveNet (350x350 RGB, normalized by /255)
+        import numpy as np
+        
+        # Convert BGR to RGB if needed (OpenCV uses BGR)
+        if len(image_array.shape) == 3 and image_array.shape[2] == 3:
+            rgb_image = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
+        else:
+            rgb_image = image_array
+        
+        # Resize to 350x350 (AttractiveNet input size)
+        resized = cv2.resize(rgb_image, (350, 350), interpolation=cv2.INTER_CUBIC)
+        
+        # Normalize to 0-1 range (as per AttractiveNet training)
+        normalized = resized.astype(np.float32) / 255.0
+        
+        # Add batch dimension
+        input_tensor = np.expand_dims(normalized, axis=0)
+        
+        # Predict
+        prediction = _ATTRACTIVENET_MODEL.predict(input_tensor, verbose=0)
+        raw_score = float(prediction[0][0])  # Raw SCUT score: 1.0-5.0
+        
+        # Clamp to valid range (model can sometimes output slightly outside 1-5)
+        raw_score = max(1.0, min(5.0, raw_score))
+        
+        # Convert SCUT (1-5) to 0-100 scale
+        # Formula: (raw - 1) / 4 * 100
+        # 1.0 -> 0, 2.0 -> 25, 3.0 -> 50, 4.0 -> 75, 5.0 -> 100
+        score_0_100 = (raw_score - 1.0) / 4.0 * 100.0
+        
+        print(f"✅ AttractiveNet: Raw={raw_score:.3f} (SCUT 1-5) → {score_0_100:.1f} (0-100)")
+        
+        return score_0_100
         
     except Exception as e:
-        print(f"❌ FaceStats scoring error: {e}")
+        print(f"❌ AttractiveNet error: {e}")
         import traceback
         traceback.print_exc()
         return None
+
+def calculate_facestats_score(image_array):
+    """
+    DEPRECATED: FaceStats (CLIP + MLP) has been replaced by AttractiveNet.
+    
+    FaceStats had a narrow output range (~1.7-2.0) making score separation impossible.
+    AttractiveNet (MobileNetV2 on SCUT-FBP5500) has a full 1.0-5.0 output range.
+    
+    This stub returns None to maintain backwards compatibility.
+    Use calculate_attractivenet_score() instead.
+    """
+    print("⚠️ FaceStats is DEPRECATED - use AttractiveNet instead")
+    return None
 
 def calculate_beauty_classifier_score(image_array):
     """
