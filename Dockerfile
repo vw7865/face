@@ -52,8 +52,9 @@ RUN pip install --no-cache-dir \
     "torchvision>=0.15.0" \
     --index-url https://download.pytorch.org/whl/cpu
 
-# Install TensorFlow (for AttractiveNet MobileNetV2 model)
-RUN pip install --no-cache-dir "tensorflow>=2.13.0"
+# Install TensorFlow 2.13.x (for AttractiveNet MobileNetV2 model)
+# MUST use 2.13.x - newer versions (2.16+) use Keras 3 which is incompatible with old .h5 models
+RUN pip install --no-cache-dir "tensorflow==2.13.1"
 
 # Install deepface (depends on torch)
 RUN pip install --no-cache-dir "deepface>=0.0.79"

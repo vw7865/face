@@ -10,7 +10,7 @@ gunicorn==21.2.0
 deepface>=0.0.79
 torch>=2.0.0
 torchvision>=0.15.0
-tensorflow>=2.13.0
+tensorflow==2.13.1
 scikit-learn>=1.3.0
 requests>=2.31.0
 fal-client>=0.4.0
