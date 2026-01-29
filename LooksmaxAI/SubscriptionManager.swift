@@ -42,10 +42,16 @@ class SubscriptionManager: ObservableObject {
             for await result in Transaction.updates {
                 do {
                     let transaction = try self.checkVerified(result)
-                    await transaction.finish()
-                    await MainActor.run {
-                        self.checkSubscriptionStatus()
+                    // Only finish and react to subscription transactions; credit consumables
+                    // are handled and finished by CreditPurchaseManager.
+                    let isSubscription = transaction.productID == self.weeklyProductID || transaction.productID == self.yearlyProductID
+                    if isSubscription {
+                        await transaction.finish()
+                        await MainActor.run {
+                            self.checkSubscriptionStatus()
+                        }
                     }
+                    // Credit products: do not finish here; CreditPurchaseManager owns them.
                 } catch {
                     print("❌ Transaction verification failed: \(error)")
                 }
@@ -188,12 +194,14 @@ class SubscriptionManager: ObservableObject {
             print("📅 No subscription expiration date")
         }
         
-        // Reset credits when subscription renews (if Pro)
+        // Reset/add credits when subscription status changes (if Pro)
         if isPro {
-            print("🔍 [Subscription Check] User is Pro - checking credits reset")
+            print("🔍 [Subscription Check] User is Pro - checking credits reset/add")
             UsageTracker.shared.checkAndResetCreditsIfNeeded()
         } else {
-            print("🔍 [Subscription Check] User is Free - credits should be cleared")
+            print("🔍 [Subscription Check] User is Free - keeping purchased credits")
+            // Free users keep their purchased credits, just remove reset date
+            UsageTracker.shared.checkAndResetCreditsIfNeeded()
         }
         
         // Notify other components of subscription status change

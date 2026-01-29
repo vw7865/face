@@ -168,359 +168,387 @@ struct RateView: View {
         UIDevice.current.userInterfaceIdiom == .phone
     }
     
+    // Welcome/landing view when no gender/photo step selected
+    private var welcomeView: some View {
+        Group {
+            if isIPhone {
+                welcomeViewIPhone
+            } else {
+                welcomeViewIPad
+            }
+        }
+    }
+    
+    private var welcomeViewIPhone: some View {
+        VStack(spacing: isIPhone ? 16 : 30) {
+            // Headline
+            VStack(spacing: isIPhone ? 6 : 12) {
+                Text("Discover Your True Rating")
+                    .font(.system(size: isIPhone ? 26 : 36, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                
+                HStack(spacing: 4) {
+                    Image(systemName: "brain.head.profile")
+                        .font(.system(size: isIPhone ? 10 : 12, weight: .medium))
+                    Text("Powered by AI")
+                        .font(.system(size: isIPhone ? 11 : 14, weight: .medium, design: .rounded))
+                    Text("·")
+                        .font(.system(size: isIPhone ? 11 : 14, weight: .medium))
+                    Text("Analyzed with Precision")
+                        .font(.system(size: isIPhone ? 11 : 14, weight: .medium, design: .rounded))
+                }
+                .foregroundColor(.gray.opacity(0.7))
+            }
+            .multilineTextAlignment(.center)
+            .padding(.horizontal)
+            .padding(.top, isIPhone ? 20 : 40)
+            
+            // Subheadline
+            Text("AI-powered facial analysis for accurate and personalized insights.")
+                .font(.system(size: isIPhone ? 14 : 19, weight: .regular))
+                .foregroundColor(Color(red: 0.8, green: 0.8, blue: 0.8))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+                .padding(.top, isIPhone ? 4 : 8)
+            
+            // Key Features with card-style layout
+            VStack(spacing: isIPhone ? 10 : 16) {
+                RateFeatureRow(icon: "chart.bar.fill", text: "50+ facial metrics analyzed", keyTerm: "50+ facial metrics")
+                RateFeatureRow(icon: "star.fill", text: "PSL & Objective scale ratings", keyTerm: "PSL & Objective")
+                RateFeatureRow(icon: "lightbulb.fill", text: "Personalized looksmaxxing advice", keyTerm: "Personalized")
+            }
+            .padding(.horizontal, isIPhone ? 20 : 40)
+            .padding(.top, isIPhone ? 12 : 20)
+            
+            // Usage indicator for free users
+            if !subscriptionManager.isPro {
+                let remaining = usageTracker.getFaceRatingRemaining()
+                if remaining > 0 {
+                    Text("\(remaining) free rating\(remaining == 1 ? "" : "s") remaining")
+                        .font(.system(size: isIPhone ? 11 : 14))
+                        .foregroundColor(.gray)
+                        .padding(.top, isIPhone ? 4 : 8)
+                } else {
+                    VStack(spacing: isIPhone ? 6 : 8) {
+                        Text("You've used all free ratings")
+                            .font(.system(size: isIPhone ? 14 : 16))
+                            .foregroundColor(.white)
+                        Text("Upgrade to Pro for unlimited ratings")
+                            .font(.system(size: isIPhone ? 11 : 14))
+                            .foregroundColor(.gray)
+                        Button(action: {
+                            isShowingUpgrade = true
+                        }) {
+                            Text("Upgrade to Pro")
+                                .font(.system(size: isIPhone ? 14 : 16))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, isIPhone ? 20 : 24)
+                                .padding(.vertical, isIPhone ? 10 : 12)
+                                .background(Color.red)
+                                .cornerRadius(10)
+                        }
+                        .padding(.top, isIPhone ? 4 : 8)
+                    }
+                    .padding(isIPhone ? 12 : 16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.white.opacity(0.1))
+                    )
+                    .padding(.horizontal, isIPhone ? 20 : 40)
+                    .padding(.top, isIPhone ? 12 : 20)
+                }
+            }
+            
+            // Begin Button with gradient and icon
+            Button(action: {
+                if usageTracker.canUseFaceRating() {
+                    showGenderSelection = true
+                } else {
+                    isShowingUpgrade = true
+                }
+            }) {
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.system(size: isIPhone ? 16 : 20, weight: .semibold))
+                    Text("Start My Analysis")
+                        .font(.system(size: isIPhone ? 16 : 18, weight: .semibold))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, isIPhone ? 14 : 16)
+                .background(
+                    LinearGradient(
+                        colors: [Color.blue, Color.cyan],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .cornerRadius(14)
+                .shadow(color: Color.blue.opacity(0.4), radius: 12, x: 0, y: 6)
+            }
+            .padding(.horizontal, isIPhone ? 20 : 40)
+            .padding(.top, isIPhone ? 16 : 30)
+            .padding(.bottom, isIPhone ? 20 : 40)
+            
+            Spacer()
+        }
+    }
+    
+    private var welcomeViewIPad: some View {
+        ScrollView {
+            VStack(spacing: 30) {
+                // Headline
+                VStack(spacing: 12) {
+                    Text("Discover Your True Rating")
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                    
+                    HStack(spacing: 4) {
+                        Image(systemName: "brain.head.profile")
+                            .font(.system(size: 12, weight: .medium))
+                        Text("Powered by AI")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                        Text("·")
+                            .font(.system(size: 14, weight: .medium))
+                        Text("Analyzed with Precision")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                    }
+                    .foregroundColor(.gray.opacity(0.7))
+                }
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+                .padding(.top, 40)
+                
+                // Subheadline
+                Text("AI-powered facial analysis for accurate and personalized insights.")
+                    .font(.system(size: 19, weight: .regular))
+                    .foregroundColor(Color(red: 0.8, green: 0.8, blue: 0.8))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                
+                // Key Features with card-style layout
+                VStack(spacing: 16) {
+                    RateFeatureRow(icon: "chart.bar.fill", text: "50+ facial metrics analyzed", keyTerm: "50+ facial metrics")
+                    RateFeatureRow(icon: "star.fill", text: "PSL & Objective scale ratings", keyTerm: "PSL & Objective")
+                    RateFeatureRow(icon: "lightbulb.fill", text: "Personalized looksmaxxing advice", keyTerm: "Personalized")
+                }
+                .padding(.horizontal, 40)
+                .padding(.top, 20)
+                
+                // Usage indicator for free users
+                if !subscriptionManager.isPro {
+                    let remaining = usageTracker.getFaceRatingRemaining()
+                    if remaining > 0 {
+                        Text("\(remaining) free rating\(remaining == 1 ? "" : "s") remaining")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                            .padding(.top, 8)
+                    } else {
+                        VStack(spacing: 8) {
+                            Text("You've used all free ratings")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                            Text("Upgrade to Pro for unlimited ratings")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                            Button(action: {
+                                isShowingUpgrade = true
+                            }) {
+                                Text("Upgrade to Pro")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 24)
+                                    .padding(.vertical, 12)
+                                    .background(Color.red)
+                                    .cornerRadius(10)
+                            }
+                            .padding(.top, 8)
+                        }
+                        .padding()
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color.white.opacity(0.1))
+                        )
+                        .padding(.horizontal, 40)
+                        .padding(.top, 20)
+                    }
+                }
+                
+                // Begin Button with gradient and icon
+                Button(action: {
+                    if usageTracker.canUseFaceRating() {
+                        showGenderSelection = true
+                    } else {
+                        isShowingUpgrade = true
+                    }
+                }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                        Text("Start My Analysis")
+                            .font(.system(size: 18, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(
+                        LinearGradient(
+                            colors: [Color.blue, Color.cyan],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .cornerRadius(14)
+                    .shadow(color: Color.blue.opacity(0.4), radius: 12, x: 0, y: 6)
+                }
+                .padding(.horizontal, 40)
+                .padding(.top, 30)
+                .padding(.bottom, 40)
+            }
+        }
+    }
+    
+    private var analyzingView: some View {
+        VStack(spacing: 20) {
+            ProgressView()
+                .scaleEffect(1.5)
+                .tint(.blue)
+            Text("Analyzing your face...")
+                .font(.headline)
+                .foregroundColor(.gray)
+            Text("This may take 30-60 seconds")
+                .font(.caption)
+                .foregroundColor(.gray.opacity(0.7))
+        }
+        .transition(.opacity)
+    }
+    
+    private var genderSelectionView: some View {
+        VStack(spacing: 30) {
+            Text("Select Your Gender")
+                .font(.title2)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+                .padding(.top)
+            
+            HStack(spacing: 30) {
+                // Male button
+                Button(action: {
+                    selectedGender = "Male"
+                }) {
+                    VStack(spacing: 12) {
+                        Image("man")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 120, height: 120)
+                        
+                        Text("Male")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                    }
+                    .padding(20)
+                    .background(Color.black)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(
+                                selectedGender == "Male" ? Color.blue : Color.clear,
+                                lineWidth: 3
+                            )
+                    )
+                    .cornerRadius(12)
+                }
+                
+                // Female button
+                Button(action: {
+                    selectedGender = "Female"
+                }) {
+                    VStack(spacing: 12) {
+                        Image("woman")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 120, height: 120)
+                        
+                        Text("Female")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                    }
+                    .padding(20)
+                    .background(Color.black)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(
+                                selectedGender == "Female" ? Color.blue : Color.clear,
+                                lineWidth: 3
+                            )
+                    )
+                    .cornerRadius(12)
+                }
+            }
+            .padding(.horizontal)
+            
+            if selectedGender != nil {
+                Button(action: {
+                    currentPhotoStep = .front
+                }) {
+                    Text("Continue")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .cornerRadius(10)
+                }
+                .padding(.horizontal)
+                .padding(.top)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
+    }
+    
+    private var mainContentView: some View {
+        Group {
+            if isAnalyzing {
+                analyzingView
+            } else if !showGenderSelection && currentPhotoStep == nil {
+                welcomeView
+            } else if showGenderSelection && currentPhotoStep == nil {
+                genderSelectionView
+            } else if currentPhotoStep == .front {
+                PhotoSelectionView(
+                    gender: selectedGender ?? "Male",
+                    title: "Take or Pick a front selfie",
+                    selectedImage: $frontImage,
+                    isSideProfile: false,
+                    onContinue: {
+                        currentPhotoStep = .side
+                    }
+                )
+            } else if currentPhotoStep == .side {
+                PhotoSelectionView(
+                    gender: selectedGender ?? "Male",
+                    title: "Take a side profile selfie",
+                    selectedImage: $sideImage,
+                    isSideProfile: true,
+                    sideProfileButtonText: "Generate Results",
+                    onContinue: {
+                        if usageTracker.canUseFaceRating() {
+                            analyzeFaces()
+                        } else {
+                            isShowingUpgrade = true
+                        }
+                    }
+                )
+            }
+        }
+    }
+    
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.black.ignoresSafeArea()
-                
-                if isAnalyzing {
-                    VStack(spacing: 20) {
-                        ProgressView()
-                            .scaleEffect(1.5)
-                            .tint(.blue)
-                        Text("Analyzing your face...")
-                            .font(.headline)
-                            .foregroundColor(.gray)
-                        Text("This may take 30-60 seconds")
-                            .font(.caption)
-                            .foregroundColor(.gray.opacity(0.7))
-                    }
-                    .transition(.opacity)
-                } else if !showGenderSelection && currentPhotoStep == nil {
-                    // Static view for iPhone, ScrollView for iPad
-                    if isIPhone {
-                        VStack(spacing: isIPhone ? 16 : 30) {
-                            // Headline
-                            VStack(spacing: isIPhone ? 6 : 12) {
-                                Text("Discover Your True Rating")
-                                    .font(.system(size: isIPhone ? 26 : 36, weight: .bold, design: .rounded))
-                                    .foregroundColor(.white)
-                                
-                                HStack(spacing: 4) {
-                                    Image(systemName: "brain.head.profile")
-                                        .font(.system(size: isIPhone ? 10 : 12, weight: .medium))
-                                    Text("Powered by AI")
-                                        .font(.system(size: isIPhone ? 11 : 14, weight: .medium, design: .rounded))
-                                    Text("·")
-                                        .font(.system(size: isIPhone ? 11 : 14, weight: .medium))
-                                    Text("Analyzed with Precision")
-                                        .font(.system(size: isIPhone ? 11 : 14, weight: .medium, design: .rounded))
-                                }
-                                .foregroundColor(.gray.opacity(0.7))
-                            }
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                            .padding(.top, isIPhone ? 20 : 40)
-                            
-                            // Subheadline
-                            Text("AI-powered facial analysis for accurate and personalized insights.")
-                                .font(.system(size: isIPhone ? 14 : 19, weight: .regular))
-                                .foregroundColor(Color(red: 0.8, green: 0.8, blue: 0.8))
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal)
-                                .padding(.top, isIPhone ? 4 : 8)
-                            
-                            // Key Features with card-style layout
-                            VStack(spacing: isIPhone ? 10 : 16) {
-                                RateFeatureRow(icon: "chart.bar.fill", text: "50+ facial metrics analyzed", keyTerm: "50+ facial metrics")
-                                RateFeatureRow(icon: "star.fill", text: "PSL & Objective scale ratings", keyTerm: "PSL & Objective")
-                                RateFeatureRow(icon: "lightbulb.fill", text: "Personalized looksmaxxing advice", keyTerm: "Personalized")
-                            }
-                            .padding(.horizontal, isIPhone ? 20 : 40)
-                            .padding(.top, isIPhone ? 12 : 20)
-                            
-                            // Usage indicator for free users
-                            if !subscriptionManager.isPro {
-                                let remaining = usageTracker.getFaceRatingRemaining()
-                                if remaining > 0 {
-                                    Text("\(remaining) free rating\(remaining == 1 ? "" : "s") remaining")
-                                        .font(.system(size: isIPhone ? 11 : 14))
-                                        .foregroundColor(.gray)
-                                        .padding(.top, isIPhone ? 4 : 8)
-                                } else {
-                                    VStack(spacing: isIPhone ? 6 : 8) {
-                                        Text("You've used all free ratings")
-                                            .font(.system(size: isIPhone ? 14 : 16))
-                                            .foregroundColor(.white)
-                                        Text("Upgrade to Pro for unlimited ratings")
-                                            .font(.system(size: isIPhone ? 11 : 14))
-                                            .foregroundColor(.gray)
-                                        Button(action: {
-                                            isShowingUpgrade = true
-                                        }) {
-                                            Text("Upgrade to Pro")
-                                                .font(.system(size: isIPhone ? 14 : 16))
-                                                .foregroundColor(.white)
-                                                .padding(.horizontal, isIPhone ? 20 : 24)
-                                                .padding(.vertical, isIPhone ? 10 : 12)
-                                                .background(Color.red)
-                                                .cornerRadius(10)
-                                        }
-                                        .padding(.top, isIPhone ? 4 : 8)
-                                    }
-                                    .padding(isIPhone ? 12 : 16)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .fill(Color.white.opacity(0.1))
-                                    )
-                                    .padding(.horizontal, isIPhone ? 20 : 40)
-                                    .padding(.top, isIPhone ? 12 : 20)
-                                }
-                            }
-                            
-                            // Begin Button with gradient and icon
-                            Button(action: {
-                                if usageTracker.canUseFaceRating() {
-                                    showGenderSelection = true
-                                } else {
-                                    isShowingUpgrade = true
-                                }
-                            }) {
-                                HStack(spacing: 10) {
-                                    Image(systemName: "arrow.right.circle.fill")
-                                        .font(.system(size: isIPhone ? 16 : 20, weight: .semibold))
-                                    Text("Start My Analysis")
-                                        .font(.system(size: isIPhone ? 16 : 18, weight: .semibold))
-                                }
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, isIPhone ? 14 : 16)
-                                .background(
-                                    LinearGradient(
-                                        colors: [Color.blue, Color.cyan],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .cornerRadius(14)
-                                .shadow(color: Color.blue.opacity(0.4), radius: 12, x: 0, y: 6)
-                            }
-                            .padding(.horizontal, isIPhone ? 20 : 40)
-                            .padding(.top, isIPhone ? 16 : 30)
-                            .padding(.bottom, isIPhone ? 20 : 40)
-                            
-                            Spacer()
-                        }
-                    } else {
-                        ScrollView {
-                            VStack(spacing: 30) {
-                                // Headline
-                                VStack(spacing: 12) {
-                                    Text("Discover Your True Rating")
-                                        .font(.system(size: 36, weight: .bold, design: .rounded))
-                                        .foregroundColor(.white)
-                                    
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "brain.head.profile")
-                                            .font(.system(size: 12, weight: .medium))
-                                        Text("Powered by AI")
-                                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                                        Text("·")
-                                            .font(.system(size: 14, weight: .medium))
-                                        Text("Analyzed with Precision")
-                                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                                    }
-                                    .foregroundColor(.gray.opacity(0.7))
-                                }
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal)
-                                .padding(.top, 40)
-                                
-                                // Subheadline
-                                Text("AI-powered facial analysis for accurate and personalized insights.")
-                                    .font(.system(size: 19, weight: .regular))
-                                    .foregroundColor(Color(red: 0.8, green: 0.8, blue: 0.8))
-                                    .multilineTextAlignment(.center)
-                                    .padding(.horizontal)
-                                    .padding(.top, 8)
-                                
-                                // Key Features with card-style layout
-                                VStack(spacing: 16) {
-                                    RateFeatureRow(icon: "chart.bar.fill", text: "50+ facial metrics analyzed", keyTerm: "50+ facial metrics")
-                                    RateFeatureRow(icon: "star.fill", text: "PSL & Objective scale ratings", keyTerm: "PSL & Objective")
-                                    RateFeatureRow(icon: "lightbulb.fill", text: "Personalized looksmaxxing advice", keyTerm: "Personalized")
-                                }
-                                .padding(.horizontal, 40)
-                                .padding(.top, 20)
-                                
-                                // Usage indicator for free users
-                                if !subscriptionManager.isPro {
-                                    let remaining = usageTracker.getFaceRatingRemaining()
-                                    if remaining > 0 {
-                                        Text("\(remaining) free rating\(remaining == 1 ? "" : "s") remaining")
-                                            .font(.subheadline)
-                                            .foregroundColor(.gray)
-                                            .padding(.top, 8)
-                                    } else {
-                                        VStack(spacing: 8) {
-                                            Text("You've used all free ratings")
-                                                .font(.headline)
-                                                .foregroundColor(.white)
-                                            Text("Upgrade to Pro for unlimited ratings")
-                                                .font(.subheadline)
-                                                .foregroundColor(.gray)
-                                            Button(action: {
-                                                isShowingUpgrade = true
-                                            }) {
-                                                Text("Upgrade to Pro")
-                                                    .font(.headline)
-                                                    .foregroundColor(.white)
-                                                    .padding(.horizontal, 24)
-                                                    .padding(.vertical, 12)
-                                                    .background(Color.red)
-                                                    .cornerRadius(10)
-                                            }
-                                            .padding(.top, 8)
-                                        }
-                                        .padding()
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 12)
-                                                .fill(Color.white.opacity(0.1))
-                                        )
-                                        .padding(.horizontal, 40)
-                                        .padding(.top, 20)
-                                    }
-                                }
-                                
-                                // Begin Button with gradient and icon
-                                Button(action: {
-                                    if usageTracker.canUseFaceRating() {
-                                        showGenderSelection = true
-                                    } else {
-                                        isShowingUpgrade = true
-                                    }
-                                }) {
-                                    HStack(spacing: 10) {
-                                        Image(systemName: "arrow.right.circle.fill")
-                                            .font(.system(size: 20, weight: .semibold))
-                                        Text("Start My Analysis")
-                                            .font(.system(size: 18, weight: .semibold))
-                                    }
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 16)
-                                    .background(
-                                        LinearGradient(
-                                            colors: [Color.blue, Color.cyan],
-                                            startPoint: .leading,
-                                            endPoint: .trailing
-                                        )
-                                    )
-                                    .cornerRadius(14)
-                                    .shadow(color: Color.blue.opacity(0.4), radius: 12, x: 0, y: 6)
-                                }
-                                .padding(.horizontal, 40)
-                                .padding(.top, 30)
-                                .padding(.bottom, 40)
-                            }
-                        }
-                    }
-                } else if showGenderSelection && currentPhotoStep == nil {
-                    VStack(spacing: 30) {
-                        Text("Select Your Gender")
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                            .padding(.top)
-                        
-                        HStack(spacing: 30) {
-                            // Male button
-                            Button(action: {
-                                selectedGender = "Male"
-                            }) {
-                                VStack(spacing: 12) {
-                                    Image("man")
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fit)
-                                        .frame(width: 120, height: 120)
-                                    
-                                    Text("Male")
-                                        .font(.headline)
-                                        .foregroundColor(.white)
-                                }
-                                .padding(20)
-                                .background(Color.black)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(
-                                            selectedGender == "Male" ? Color.blue : Color.clear,
-                                            lineWidth: 3
-                                        )
-                                )
-                                .cornerRadius(12)
-                            }
-                            
-                            // Female button
-                            Button(action: {
-                                selectedGender = "Female"
-                            }) {
-                                VStack(spacing: 12) {
-                                    Image("woman")
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fit)
-                                        .frame(width: 120, height: 120)
-                                    
-                                    Text("Female")
-                                        .font(.headline)
-                                        .foregroundColor(.white)
-                                }
-                                .padding(20)
-                                .background(Color.black)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(
-                                            selectedGender == "Female" ? Color.blue : Color.clear,
-                                            lineWidth: 3
-                                        )
-                                )
-                                .cornerRadius(12)
-                            }
-                        }
-                        .padding(.horizontal)
-                        
-                        if selectedGender != nil {
-                            Button(action: {
-                                currentPhotoStep = .front
-                            }) {
-                                Text("Continue")
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(Color.blue)
-                                    .cornerRadius(10)
-                            }
-                            .padding(.horizontal)
-                            .padding(.top)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.black)
-                } else if currentPhotoStep == .front {
-                    PhotoSelectionView(
-                        gender: selectedGender ?? "Male",
-                        title: "Take or Pick a front selfie",
-                        selectedImage: $frontImage,
-                        onContinue: {
-                            currentPhotoStep = .side
-                        },
-                        isSideProfile: false
-                    )
-                } else if currentPhotoStep == .side {
-                    PhotoSelectionView(
-                        gender: selectedGender ?? "Male",
-                        title: "Take a side profile selfie",
-                        selectedImage: $sideImage,
-                        onContinue: {
-                            if usageTracker.canUseFaceRating() {
-                                analyzeFaces()
-                            } else {
-                                isShowingUpgrade = true
-                            }
-                        },
-                        isSideProfile: true
-                    )
-                }
+                mainContentView
             }
             .navigationTitle("Mogged")
             .navigationBarTitleDisplayMode(.inline)
@@ -677,8 +705,9 @@ struct PhotoSelectionView: View {
     let gender: String
     let title: String
     @Binding var selectedImage: UIImage?
-    let onContinue: () -> Void
     let isSideProfile: Bool
+    var sideProfileButtonText: String = "Generate Photo" // Default for other views
+    let onContinue: () -> Void
     @State private var showImagePicker = false
     @State private var showCamera = false
     @State private var showPhotoSourceOptions = false
@@ -766,7 +795,7 @@ struct PhotoSelectionView: View {
                         Button(action: {
                             validateAndContinue()
                         }) {
-                            Text(isSideProfile ? "Generate Photo" : "Continue")
+                            Text(isSideProfile ? sideProfileButtonText : "Continue")
                                 .font(.headline)
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
@@ -1275,7 +1304,9 @@ struct MaxxingCard<Destination: View>: View {
 struct SettingsView: View {
     @StateObject private var scaleManager = ScaleManager.shared
     @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @StateObject private var usageTracker = UsageTracker.shared
     @State private var isShowingUpgrade = false
+    @State private var isShowingCreditPurchase = false
     @State private var isRestoring = false
     @State private var showRestoreSuccess = false
     @State private var showRestoreError = false
@@ -1338,6 +1369,38 @@ struct SettingsView: View {
                         .foregroundColor(.white)
                         .font(.headline)) {
                         ScaleReferenceSection(selectedScale: scaleManager.selectedScale)
+                    }
+                    .listRowBackground(Color.white.opacity(0.05))
+                    
+                    Section(header: Text("Credits")
+                        .foregroundColor(.white)
+                        .font(.headline)) {
+                        Button {
+                            isShowingCreditPurchase = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "sparkles")
+                                    .foregroundColor(.cyan)
+                                    .font(.system(size: 18))
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Purchase Credits")
+                                        .foregroundColor(.white)
+                                        .font(.body)
+                                    Text("\(usageTracker.getImageGenerationCreditsRemaining()) credits available")
+                                        .foregroundColor(.gray)
+                                        .font(.caption)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        
+                        Text("Credits are used for photo generation features. Pro subscribers receive monthly credits, and all users can purchase additional credits.")
+                            .font(.caption)
+                            .foregroundColor(.gray.opacity(0.8))
+                            .padding(.top, 4)
                     }
                     .listRowBackground(Color.white.opacity(0.05))
                     
@@ -1427,6 +1490,9 @@ struct SettingsView: View {
         .toolbar(.visible, for: .tabBar)
         .fullScreenCover(isPresented: $isShowingUpgrade) {
             UpgradeView()
+        }
+        .fullScreenCover(isPresented: $isShowingCreditPurchase) {
+            CreditPurchaseView()
         }
         .alert("Restore Successful", isPresented: $showRestoreSuccess) {
             Button("OK", role: .cancel) { }
@@ -1626,8 +1692,13 @@ struct RateFeatureRow: View {
     let text: String
     let keyTerm: String
     
+    // Detect if device is iPhone (not iPad)
+    private var isIPhone: Bool {
+        UIDevice.current.userInterfaceIdiom == .phone
+    }
+    
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: isIPhone ? 12 : 16) {
             // SF Symbol icon with gradient background
             ZStack {
                 Circle()
@@ -1638,10 +1709,10 @@ struct RateFeatureRow: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .frame(width: 44, height: 44)
+                    .frame(width: isIPhone ? 36 : 44, height: isIPhone ? 36 : 44)
                 
                 Image(systemName: icon)
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: isIPhone ? 14 : 18, weight: .semibold))
                     .foregroundStyle(
                         LinearGradient(
                             colors: [Color.cyan, Color.purple],
@@ -1660,20 +1731,24 @@ struct RateFeatureRow: View {
                 (Text(before) +
                  Text(key).fontWeight(.bold).foregroundColor(.cyan) +
                  Text(after))
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.system(size: isIPhone ? 12 : 16, weight: .medium))
                     .foregroundColor(.white)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text(text)
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.system(size: isIPhone ? 12 : 16, weight: .medium))
                     .foregroundColor(.white)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             
             Spacer()
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
+        .padding(.horizontal, isIPhone ? 14 : 18)
+        .padding(.vertical, isIPhone ? 12 : 16)
         .background(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: isIPhone ? 12 : 16)
                 .fill(
                     LinearGradient(
                         colors: [Color.white.opacity(0.1), Color.white.opacity(0.05)],
@@ -1682,7 +1757,7 @@ struct RateFeatureRow: View {
                     )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16)
+                    RoundedRectangle(cornerRadius: isIPhone ? 12 : 16)
                         .stroke(
                             LinearGradient(
                                 colors: [Color.white.opacity(0.2), Color.white.opacity(0.1)],

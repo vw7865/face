@@ -113,7 +113,6 @@ struct UpgradeView: View {
                     }
                 }
             }
-            .navigationTitle("Upgrade to Pro")
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .toolbar {
@@ -157,6 +156,7 @@ struct UpgradeView: View {
             FeatureRow(icon: "photo.fill", title: "Tindermaxxing", description: "Create stunning dating profile photos with AI")
             FeatureRow(icon: "crown.fill", title: "Sub 5 to Mogger", description: "See what you look like as a mogger")
             FeatureRow(icon: "chart.bar.fill", title: "Full History Access", description: "View unlimited results and track your progress")
+            FeatureRow(icon: "sparkles", title: "30 Monthly Credits", description: "For photo generation features (Tindermaxxing, Sub 5 to Mogger)")
         }
         .padding(12)
         .background(

@@ -52,6 +52,10 @@ struct CreditPurchaseView: View {
                     headerSection
                         .padding(.top, 20)
                     
+                    // Current credits display
+                    currentCreditsSection
+                        .padding(.top, 16)
+                    
                     // Section subtitle
                     Text("Available Plans")
                         .font(.subheadline)

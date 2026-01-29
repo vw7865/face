@@ -22,7 +22,7 @@ struct Sub5ToChadView: View {
     @StateObject private var subscriptionManager = SubscriptionManager.shared
     @State private var isShowingUpgrade = false
     @State private var isShowingCreditPurchase = false
-    @State private var showOutOfCreditsAlert = false
+    @State private var showOutOfCreditsActionSheet = false
     
     // Photo step enum
     private enum PhotoStep {
@@ -68,11 +68,9 @@ struct Sub5ToChadView: View {
             .navigationBarBackButtonHidden(true)
             .toolbarVisibility(.hidden, for: .tabBar)
             .toolbar {
-                // Credit balance display (Pro users only)
-                if subscriptionManager.isPro {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        CreditBalanceView(showCreditPurchase: $isShowingCreditPurchase)
-                    }
+                // Credit balance display (visible to all users)
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    CreditBalanceView(showCreditPurchase: $isShowingCreditPurchase)
                 }
                 
                 // Only show back button when NOT showing results
@@ -132,13 +130,25 @@ struct Sub5ToChadView: View {
             .fullScreenCover(isPresented: $isShowingCreditPurchase) {
                 CreditPurchaseView()
             }
-            .alert("Out of Credits", isPresented: $showOutOfCreditsAlert) {
-                Button("Continue") {
+            .confirmationDialog("Out of Credits", isPresented: $showOutOfCreditsActionSheet, titleVisibility: .visible) {
+                Button("Purchase Credits") {
                     isShowingCreditPurchase = true
                 }
+                
+                if !subscriptionManager.isPro {
+                    Button("Upgrade to Pro") {
+                        isShowingUpgrade = true
+                    }
+                }
+                
                 Button("Cancel", role: .cancel) { }
             } message: {
-                Text("Purchase credits to continue")
+                let credits = usageTracker.getImageGenerationCreditsRemaining()
+                if subscriptionManager.isPro {
+                    Text("You have \(credits) credits remaining. Purchase more credits to continue generating images.")
+                } else {
+                    Text("You have \(credits) credits remaining. Pro subscribers get 30 credits/month, or you can purchase credits individually.")
+                }
             }
         }
     }
@@ -255,13 +265,13 @@ struct Sub5ToChadView: View {
             gender: selectedGender ?? "Male",
             title: "Take or Pick a front selfie",
             selectedImage: $frontImage,
+            isSideProfile: false,
             onContinue: {
                 // Move to side profile selection after front photo is selected
                 if frontImage != nil {
                     currentPhotoStep = .side
                 }
-            },
-            isSideProfile: false
+            }
         )
     }
     
@@ -271,17 +281,13 @@ struct Sub5ToChadView: View {
             gender: selectedGender ?? "Male",
             title: "Take a side profile selfie",
             selectedImage: $sideImage,
+            isSideProfile: true,
             onContinue: {
-                // Generate chad version after both photos are selected (only if Pro)
+                // Generate chad version after both photos are selected (check credits)
                 if let frontImg = frontImage, let sideImg = sideImage, let gender = selectedGender {
-                    if subscriptionManager.isPro {
-                        generateChadVersion(frontImage: frontImg, sideImage: sideImg, gender: gender)
-                    } else {
-                        isShowingUpgrade = true
-                    }
+                    generateChadVersion(frontImage: frontImg, sideImage: sideImg, gender: gender)
                 }
-            },
-            isSideProfile: true
+            }
         )
     }
     
@@ -328,12 +334,7 @@ struct Sub5ToChadView: View {
     private func generateChadVersion(frontImage: UIImage, sideImage: UIImage, gender: String) {
         // Check if user has credits
         guard usageTracker.canUseImageGeneration() else {
-            if !subscriptionManager.isPro {
-                isShowingUpgrade = true
-            } else {
-                errorMessage = "You've used all your monthly credits. Purchase more credits to continue generating images."
-                showError = true
-            }
+            showOutOfCreditsActionSheet = true
             return
         }
         
@@ -387,31 +388,30 @@ struct CreditBalanceView: View {
     @Binding var showCreditPurchase: Bool
     
     var body: some View {
-        if subscriptionManager.isPro {
-            Button(action: {
-                showCreditPurchase = true
-            }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 12))
-                        .foregroundColor(.cyan)
-                    Text("\(usageTracker.getImageGenerationCreditsRemaining()) Credits")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    Capsule()
-                        .fill(Color.cyan.opacity(0.2))
-                        .overlay(
-                            Capsule()
-                                .stroke(Color.cyan.opacity(0.4), lineWidth: 1)
-                        )
-                )
+        // Credits visible to all users (free users see "0 Credits")
+        Button(action: {
+            showCreditPurchase = true
+        }) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 12))
+                    .foregroundColor(.cyan)
+                Text("\(usageTracker.getImageGenerationCreditsRemaining()) Credits")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
             }
-            .buttonStyle(PlainButtonStyle())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(Color.cyan.opacity(0.2))
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.cyan.opacity(0.4), lineWidth: 1)
+                    )
+            )
         }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 

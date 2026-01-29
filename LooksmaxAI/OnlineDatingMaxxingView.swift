@@ -10,6 +10,7 @@ import UIKit
 
 struct OnlineDatingMaxxingView: View {
     @Environment(\.dismiss) var dismiss
+    @FocusState private var focusedField: Field?
     @State private var userPhoto: UIImage? = nil
     @State private var referenceImage: UIImage? = nil
     @State private var prompt: String = ""
@@ -40,7 +41,17 @@ struct OnlineDatingMaxxingView: View {
     @StateObject private var subscriptionManager = SubscriptionManager.shared
     @State private var isShowingUpgrade = false
     @State private var isShowingCreditPurchase = false
-    @State private var showOutOfCreditsAlert = false
+    @State private var showOutOfCreditsActionSheet = false
+    
+    enum Field {
+        case sceneDescription
+        case additionalComments
+        case editPrompt
+    }
+    
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
     
     enum ClothingSource: String, CaseIterable {
         case myImage = "My image"
@@ -84,11 +95,9 @@ struct OnlineDatingMaxxingView: View {
             .navigationBarBackButtonHidden(true)
             .toolbarVisibility(.hidden, for: .tabBar)
             .toolbar {
-                // Credit balance display (Pro users only)
-                if subscriptionManager.isPro {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        CreditBalanceView(showCreditPurchase: $isShowingCreditPurchase)
-                    }
+                // Credit balance display (visible to all users)
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    CreditBalanceView(showCreditPurchase: $isShowingCreditPurchase)
                 }
                 
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -99,6 +108,14 @@ struct OnlineDatingMaxxingView: View {
                             .font(.system(size: 24))
                             .foregroundColor(.white.opacity(0.8))
                     }
+                }
+                
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        dismissKeyboard()
+                    }
+                    .foregroundColor(.cyan)
                 }
             }
             .onDisappear {
@@ -111,13 +128,25 @@ struct OnlineDatingMaxxingView: View {
             .fullScreenCover(isPresented: $isShowingCreditPurchase) {
                 CreditPurchaseView()
             }
-            .alert("Out of Credits", isPresented: $showOutOfCreditsAlert) {
-                Button("Continue") {
+            .confirmationDialog("Out of Credits", isPresented: $showOutOfCreditsActionSheet, titleVisibility: .visible) {
+                Button("Purchase Credits") {
                     isShowingCreditPurchase = true
                 }
+                
+                if !subscriptionManager.isPro {
+                    Button("Upgrade to Pro") {
+                        isShowingUpgrade = true
+                    }
+                }
+                
                 Button("Cancel", role: .cancel) { }
             } message: {
-                Text("Purchase credits to continue")
+                let credits = usageTracker.getImageGenerationCreditsRemaining()
+                if subscriptionManager.isPro {
+                    Text("You have \(credits) credits remaining. Purchase more credits to continue generating images.")
+                } else {
+                    Text("You have \(credits) credits remaining. Pro subscribers get 30 credits/month, or you can purchase credits individually.")
+                }
             }
             .sheet(isPresented: $showUserPhotoPicker) {
                 ImagePicker(selectedImage: $userPhoto, sourceType: imagePickerSourceType)
@@ -392,6 +421,9 @@ struct OnlineDatingMaxxingView: View {
             }
             .padding(.bottom, 40)
         }
+        .onTapGesture {
+            dismissKeyboard()
+        }
     }
     
     
@@ -572,6 +604,11 @@ struct OnlineDatingMaxxingView: View {
                 .cornerRadius(12)
                 .foregroundColor(.white)
                 .lineLimit(2...4)
+                .focused($focusedField, equals: .sceneDescription)
+                .submitLabel(.done)
+                .onSubmit {
+                    dismissKeyboard()
+                }
         }
         .padding()
         .background(sectionBackground)
@@ -634,6 +671,11 @@ struct OnlineDatingMaxxingView: View {
                 .cornerRadius(12)
                 .foregroundColor(.white)
                 .lineLimit(2...4)
+                .focused($focusedField, equals: .additionalComments)
+                .submitLabel(.done)
+                .onSubmit {
+                    dismissKeyboard()
+                }
         }
         .padding()
         .background(sectionBackground)
@@ -641,73 +683,31 @@ struct OnlineDatingMaxxingView: View {
     
     private var generateButton: some View {
         VStack(spacing: 12) {
-            if !subscriptionManager.isPro {
-                // Show upgrade prompt for free users
-                VStack(spacing: 16) {
-                    Image(systemName: "crown.fill")
-                        .font(.system(size: 40))
-                        .foregroundColor(.yellow)
-                    
-                    Text("Pro Feature")
-                        .font(.title3)
-                        .fontWeight(.bold)
+            // Show generate button for all users (credits check happens in generatePhoto)
+            Button(action: {
+                generatePhoto()
+            }) {
+                HStack {
+                    if isGenerating {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    } else {
+                        Image(systemName: "sparkles")
+                            .font(.title3)
+                    }
+                    Text(isGenerating ? "Generating..." : "Generate Photo")
+                        .font(.headline)
                         .foregroundColor(.white)
-                    
-                    Text("Image generation is a Pro-only feature. Upgrade to create stunning dating profile photos!")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                    
-                    Button(action: {
-                        isShowingUpgrade = true
-                    }) {
-                        Text("Upgrade to Pro")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 32)
-                            .padding(.vertical, 12)
-                            .background(Color.red)
-                            .cornerRadius(12)
-                    }
                 }
-                .padding()
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
                 .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.white.opacity(0.1))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color.yellow.opacity(0.5), lineWidth: 2)
-                        )
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(canGenerate ? Color.cyan : Color.gray.opacity(0.3))
                 )
-                .padding(.horizontal)
-            } else {
-                // Show generate button for Pro users
-                Button(action: {
-                    generatePhoto()
-                }) {
-                    HStack {
-                        if isGenerating {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        } else {
-                            Image(systemName: "sparkles")
-                                .font(.title3)
-                        }
-                        Text(isGenerating ? "Generating..." : "Generate Photo")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(canGenerate ? Color.cyan : Color.gray.opacity(0.3))
-                    )
-                }
-                .disabled(!canGenerate || isGenerating)
-                .padding(.horizontal)
             }
+            .disabled(!canGenerate || isGenerating)
+            .padding(.horizontal)
         }
     }
     
@@ -788,6 +788,11 @@ struct OnlineDatingMaxxingView: View {
                                 )
                                 .foregroundColor(.white)
                                 .lineLimit(3...6)
+                                .focused($focusedField, equals: .editPrompt)
+                                .submitLabel(.done)
+                                .onSubmit {
+                                    dismissKeyboard()
+                                }
                             
                             if wasFaceSwap {
                                 Text("Examples: 'make face match better', 'fix face alignment', 'improve skin blending', 'adjust lighting'")
@@ -929,11 +934,7 @@ struct OnlineDatingMaxxingView: View {
         
         // Check if user has credits
         guard usageTracker.canUseImageGeneration() else {
-            if !subscriptionManager.isPro {
-                isShowingUpgrade = true
-            } else {
-                errorMessage = "You've used all your monthly credits. Purchase more credits to continue generating images."
-            }
+            showOutOfCreditsActionSheet = true
             return
         }
         

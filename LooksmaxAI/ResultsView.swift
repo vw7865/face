@@ -149,29 +149,26 @@ struct ResultsView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    // Share/Save button (only show on Overall section)
-                    if currentSection == .overall {
-                        Menu {
-                            Button(action: {
-                                captureAndSaveOverallScreen()
-                            }) {
-                                Label("Save to Photos", systemImage: "square.and.arrow.down")
-                            }
-                            
-                            Button(action: {
-                                captureAndShareOverallScreen()
-                            }) {
-                                Label("Share", systemImage: "square.and.arrow.up")
-                            }
-                        } label: {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 20))
-                                .foregroundColor(.white.opacity(0.8))
+                // Close button - always visible on leading side
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: {
+                        print("🔄 Close button tapped in ResultsView")
+                        if let onClose = onClose {
+                            print("🔄 Calling onClose callback")
+                            onClose()
+                        } else {
+                            print("🔄 No onClose callback, using dismiss")
+                            dismiss()
                         }
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.white.opacity(0.8))
                     }
-                    
-                    // Scale toggle button
+                }
+                
+                // Scale toggle button - always visible
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         // Toggle between PSL and Objective scales
                         scaleManager.selectedScale = scaleManager.selectedScale == .psl ? .objective : .psl
@@ -194,21 +191,28 @@ struct ResultsView: View {
                                 )
                         )
                     }
-                    
-                    // Close button
-                    Button(action: {
-                        print("🔄 Close button tapped in ResultsView")
-                        if let onClose = onClose {
-                            print("🔄 Calling onClose callback")
-                            onClose()
-                        } else {
-                            print("🔄 No onClose callback, using dismiss")
-                            dismiss()
+                }
+                
+                // Share/Save button (only show on Overall section) - separate item
+                if currentSection == .overall {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Menu {
+                            Button(action: {
+                                captureAndSaveOverallScreen()
+                            }) {
+                                Label("Save to Photos", systemImage: "square.and.arrow.down")
+                            }
+                            
+                            Button(action: {
+                                captureAndShareOverallScreen()
+                            }) {
+                                Label("Share", systemImage: "square.and.arrow.up")
+                            }
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 20))
+                                .foregroundColor(.white.opacity(0.8))
                         }
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(.white.opacity(0.8))
                     }
                 }
             }

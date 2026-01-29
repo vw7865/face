@@ -10,6 +10,7 @@ import UIKit
 
 struct RizzMaxxingView: View {
     @Environment(\.dismiss) var dismiss
+    @FocusState private var isTextFieldFocused: Bool
     @State private var selectedScreenshot: UIImage? = nil
     @State private var contextText: String = ""
     @State private var showImagePicker = false
@@ -24,6 +25,10 @@ struct RizzMaxxingView: View {
     @StateObject private var subscriptionManager = SubscriptionManager.shared
     @State private var isShowingUpgrade = false
     @State private var showUpgradeAlert = false
+    
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
     
     var body: some View {
         NavigationStack {
@@ -49,6 +54,14 @@ struct RizzMaxxingView: View {
                             .font(.system(size: 24))
                             .foregroundColor(.white.opacity(0.8))
                     }
+                }
+                
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        dismissKeyboard()
+                    }
+                    .foregroundColor(.cyan)
                 }
             }
             .onDisappear {
@@ -92,6 +105,9 @@ struct RizzMaxxingView: View {
                 contextTextFieldSection
                 analyzeButton
             }
+        }
+        .onTapGesture {
+            dismissKeyboard()
         }
     }
     
@@ -244,6 +260,7 @@ struct RizzMaxxingView: View {
                     )
                     .foregroundColor(.white)
                     .scrollContentBackground(.hidden)
+                    .focused($isTextFieldFocused)
                 
                 if contextText.isEmpty {
                     Text("Paste your conversation here or describe the situation...\n\nE.g., \"We just met last week, trying to get a first date. Here's our conversation:\nHer: Hey! How's it going?\nMe: Good! Just got back from the gym. What about you?\"")

@@ -18,8 +18,8 @@ class UsageTracker: ObservableObject {
     
     // Pro subscription credits (monthly reset)
     private let weeklyMonthlyCredits = 30  // Credits for weekly subscribers (per month)
-    private let yearlyMonthlyCredits = 20  // Credits for yearly subscribers (per month)
-    private let defaultMonthlyCredits = 10  // Fallback/default credits
+    private let yearlyMonthlyCredits = 30  // Credits for yearly subscribers (per month) - same as weekly
+    private let defaultMonthlyCredits = 30  // Fallback/default credits - same as subscription credits
     
     // UserDefaults keys
     private let faceRatingsCountKey = "faceRatingsCount"
@@ -56,24 +56,14 @@ class UsageTracker: ObservableObject {
         print("🔍 [UsageTracker] Loading usage data...")
         print("🔍 [UsageTracker] SubscriptionManager.shared.isPro = \(SubscriptionManager.shared.isPro)")
         
-        // Only load credits if user is Pro, otherwise clear them
+        // Load credits for all users (free users can purchase credits)
+        let storedCredits = UserDefaults.standard.integer(forKey: imageGenerationCreditsKey)
+        print("🔍 [UsageTracker] Loading credits from UserDefaults: \(storedCredits)")
+        imageGenerationCredits = storedCredits
+        
+        // Only check monthly reset for Pro users (they get monthly credits)
         if SubscriptionManager.shared.isPro {
-            let storedCredits = UserDefaults.standard.integer(forKey: imageGenerationCreditsKey)
-            print("🔍 [UsageTracker] User is Pro - loading credits from UserDefaults: \(storedCredits)")
-            imageGenerationCredits = storedCredits
-            // Check if credits need to be reset (monthly reset for Pro users)
             checkAndResetCreditsIfNeeded()
-        } else {
-            // Free users should have 0 credits - clear any stored credits
-            print("🔍 [UsageTracker] User is Free - clearing credits")
-            let oldCredits = UserDefaults.standard.integer(forKey: imageGenerationCreditsKey)
-            if oldCredits > 0 {
-                print("🔍 [UsageTracker] Found \(oldCredits) stored credits - clearing them")
-            }
-            imageGenerationCredits = 0
-            UserDefaults.standard.set(0, forKey: imageGenerationCreditsKey)
-            UserDefaults.standard.removeObject(forKey: lastCreditResetDateKey)
-            print("🔍 [UsageTracker] Credits cleared. Current credits: \(imageGenerationCredits)")
         }
     }
     
@@ -81,17 +71,14 @@ class UsageTracker: ObservableObject {
     func checkAndResetCreditsIfNeeded() {
         print("🔍 [UsageTracker] checkAndResetCreditsIfNeeded() called")
         print("🔍 [UsageTracker] SubscriptionManager.shared.isPro = \(SubscriptionManager.shared.isPro)")
+        print("🔍 [UsageTracker] Current credits before check: \(imageGenerationCredits)")
         
         guard SubscriptionManager.shared.isPro else {
-            // Free users don't get monthly credits - clear any stored credits
-            print("🔍 [UsageTracker] User is NOT Pro - clearing credits")
-            let oldCredits = imageGenerationCredits
-            imageGenerationCredits = 0
-            UserDefaults.standard.set(0, forKey: imageGenerationCreditsKey)
+            // Free users don't get monthly credits, but keep their purchased credits
+            // Don't clear credits - free users can purchase credits
+            print("🔍 [UsageTracker] User is NOT Pro - keeping purchased credits: \(imageGenerationCredits)")
+            // Remove reset date since they're not Pro (but keep credits)
             UserDefaults.standard.removeObject(forKey: lastCreditResetDateKey)
-            if oldCredits > 0 {
-                print("🔍 [UsageTracker] Cleared \(oldCredits) credits from free user")
-            }
             return
         }
         
@@ -113,19 +100,30 @@ class UsageTracker: ObservableObject {
                 }
             }
         } else {
-            // First time - give initial credits
-            print("🔍 [UsageTracker] No reset date found - first time, giving initial credits")
-            resetMonthlyCredits()
+            // First time becoming Pro - ADD monthly credits to existing purchased credits
+            print("🔍 [UsageTracker] No reset date found - first time Pro, adding monthly credits to existing balance")
+            addInitialProCredits()
         }
+    }
+    
+    private func addInitialProCredits() {
+        // Determine credits based on subscription type
+        let creditsToAdd = getCreditsForSubscription()
+        let existingCredits = imageGenerationCredits
+        imageGenerationCredits = existingCredits + creditsToAdd
+        UserDefaults.standard.set(imageGenerationCredits, forKey: imageGenerationCreditsKey)
+        UserDefaults.standard.set(Date(), forKey: lastCreditResetDateKey)
+        print("➕ Added initial Pro credits: \(creditsToAdd) credits added to existing \(existingCredits) credits = \(imageGenerationCredits) total")
     }
     
     private func resetMonthlyCredits() {
         // Determine credits based on subscription type
+        // This is for monthly resets - replace credits with monthly allowance
         let creditsToGive = getCreditsForSubscription()
         imageGenerationCredits = creditsToGive
         UserDefaults.standard.set(imageGenerationCredits, forKey: imageGenerationCreditsKey)
         UserDefaults.standard.set(Date(), forKey: lastCreditResetDateKey)
-        print("🔄 Reset monthly credits: \(creditsToGive) credits")
+        print("🔄 Reset monthly credits: \(creditsToGive) credits (monthly reset)")
     }
     
     private func getCreditsForSubscription() -> Int {
@@ -145,25 +143,18 @@ class UsageTracker: ObservableObject {
     }
     
     func canUseImageGeneration() -> Bool {
-        // Must be Pro AND have credits
-        guard SubscriptionManager.shared.isPro else {
-            return false
-        }
+        // All users can use image generation if they have credits
+        // Pro users get monthly credits, free users can purchase credits
         return imageGenerationCredits > 0
     }
     
     func getImageGenerationCreditsRemaining() -> Int {
-        guard SubscriptionManager.shared.isPro else {
-            return 0
-        }
+        // Return credits for all users (free users can purchase credits)
         return imageGenerationCredits
     }
     
     func useImageGenerationCredit() -> Bool {
-        guard SubscriptionManager.shared.isPro else {
-            return false
-        }
-        
+        // All users can use credits (Pro users get monthly credits, free users can purchase)
         guard imageGenerationCredits > 0 else {
             return false
         }
