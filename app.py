@@ -251,36 +251,24 @@ def preload_models():
                 import torchvision.models as models
                 import torch.nn as nn
                 
-                # Define BeautyClassifierModel
+                # Define BeautyClassifierModel (matches runtime architecture with self.model wrapper)
                 class BeautyClassifierModel(nn.Module):
                     def __init__(self, out_features=512):
                         super().__init__()
-                        resnet = models.resnet50(pretrained=False)
-                        self.conv1 = resnet.conv1
-                        self.bn1 = resnet.bn1
-                        self.relu = resnet.relu
-                        self.maxpool = resnet.maxpool
-                        self.layer1 = resnet.layer1
-                        self.layer2 = resnet.layer2
-                        self.layer3 = resnet.layer3
-                        self.layer4 = resnet.layer4
-                        self.avgpool = resnet.avgpool
-                        self.fc = nn.Linear(2048, 1)
-                        self.sigmoid = nn.Sigmoid()
+                        # Load ResNet-50 
+                        resnet = models.resnet50(weights=None)
+                        # Replace FC layer with custom head (matches saved weights structure)
+                        resnet.fc = nn.Sequential(
+                            nn.Linear(resnet.fc.in_features, out_features),
+                            nn.ReLU(),
+                            nn.Dropout(0.3),
+                            nn.Linear(out_features, 1),
+                            nn.Sigmoid()
+                        )
+                        self.model = resnet
                     
                     def forward(self, x):
-                        x = self.conv1(x)
-                        x = self.bn1(x)
-                        x = self.relu(x)
-                        x = self.maxpool(x)
-                        x = self.layer1(x)
-                        x = self.layer2(x)
-                        x = self.layer3(x)
-                        x = self.layer4(x)
-                        x = self.avgpool(x)
-                        x = x.view(x.size(0), -1)
-                        x = self.fc(x)
-                        return self.sigmoid(x)
+                        return self.model(x)
                 
                 base_path = Path(__file__).parent
                 model_path = base_path / "models" / "attractiveness_classifier.pt"
@@ -290,6 +278,17 @@ def preload_models():
                 if model_path.exists():
                     _BEAUTY_CLASSIFIER_MODEL = BeautyClassifierModel(out_features=512)
                     state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
+                    
+                    # FIX: Remap state_dict keys to add 'model.' prefix if needed
+                    first_key = list(state_dict.keys())[0] if state_dict else ""
+                    if not first_key.startswith("model."):
+                        print(f"🔧 Beauty-classifier: Remapping keys (adding 'model.' prefix)...")
+                        new_state_dict = {}
+                        for key, value in state_dict.items():
+                            new_key = f"model.{key}"
+                            new_state_dict[new_key] = value
+                        state_dict = new_state_dict
+                    
                     _BEAUTY_CLASSIFIER_MODEL.load_state_dict(state_dict)
                     _BEAUTY_CLASSIFIER_MODEL.eval()
                     _MODEL_LOADING_STATUS['beauty_classifier'] = True
@@ -2008,9 +2007,15 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
         # Calculate holistic attractiveness score using multiple models (FaceStats + Beauty-classifier)
         # This provides a more robust, modern attractiveness score with calibration
         # ML models are trained on human-rated attractiveness data and are more accurate than geometric measurements
+        attractiveness_result = None
         attractiveness_score = None
+        facestats_only = False
+        model_count = 0
         if front_image_array is not None:
-            attractiveness_score = calculate_attractiveness_score(front_image_array)
+            attractiveness_result = calculate_attractiveness_score(front_image_array)
+            if attractiveness_result is not None:
+                # Unpack the tuple: (score, model_count, facestats_only_flag)
+                attractiveness_score, model_count, facestats_only = attractiveness_result
         
         # HYBRID SCORING: 50% ML + 50% Geometry with sanity checks
         # This ensures:
@@ -2021,31 +2026,64 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
             print(f"\n🔍 SCORING INPUTS:")
             print(f"   Raw ML score: {attractiveness_score:.1f}")
             print(f"   Raw Geometric score: {geometric_psl:.1f}")
+            print(f"   Models used: {model_count} ({'FaceStats-only' if facestats_only else 'Multi-model ensemble'})")
             
             # SANITY CHECK: Cap ML score based on geometric foundation
             # Someone with poor bone structure cannot be a Chad regardless of soft features
             adjusted_ml = attractiveness_score
-            if geometric_psl < 40:
-                # Very poor geometry (subhuman/LTN territory) - hard cap ML
-                adjusted_ml = min(attractiveness_score, 50.0)
-                print(f"   ⚠️ Geometric < 40: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
-            elif geometric_psl < 50:
-                # Below average geometry (LTN/MTN-) - cap ML to normie range
-                adjusted_ml = min(attractiveness_score, geometric_psl + 12)
-                print(f"   ⚠️ Geometric < 50: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
-            elif geometric_psl < 60:
-                # Average geometry (MTN territory) - ML can exceed geometry by limited amount
-                adjusted_ml = min(attractiveness_score, geometric_psl + 18)
-                print(f"   ⚠️ Geometric < 60: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
-            # Above 60 geometric: no cap - good bone structure can have high ML
             
-            # HYBRID FORMULA: 50% adjusted ML + 50% geometry
-            psl = 0.50 * adjusted_ml + 0.50 * geometric_psl
+            # STRICTER CAPS when only FaceStats is available (unreliable for PSL)
+            # FaceStats tends to give inflated scores for unattractive faces
+            if facestats_only:
+                print(f"   ⚠️ FaceStats-only mode: Applying stricter caps (FaceStats overrates unattractive faces)")
+                if geometric_psl < 45:
+                    # Very poor geometry - hard cap to average
+                    adjusted_ml = min(attractiveness_score, 45.0)
+                    print(f"   ⚠️ [FaceStats-only] Geometric < 45: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
+                elif geometric_psl < 55:
+                    # Below average geometry - tighter cap
+                    adjusted_ml = min(attractiveness_score, geometric_psl + 5)
+                    print(f"   ⚠️ [FaceStats-only] Geometric < 55: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
+                elif geometric_psl < 65:
+                    # Average geometry - moderate cap
+                    adjusted_ml = min(attractiveness_score, geometric_psl + 10)
+                    print(f"   ⚠️ [FaceStats-only] Geometric < 65: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
+                else:
+                    # Good geometry - allow some boost but still cap
+                    adjusted_ml = min(attractiveness_score, geometric_psl + 15)
+                    print(f"   ⚠️ [FaceStats-only] Geometric >= 65: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
+            else:
+                # Multi-model ensemble: original caps (more trustworthy)
+                if geometric_psl < 40:
+                    # Very poor geometry (subhuman/LTN territory) - hard cap ML
+                    adjusted_ml = min(attractiveness_score, 50.0)
+                    print(f"   ⚠️ Geometric < 40: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
+                elif geometric_psl < 50:
+                    # Below average geometry (LTN/MTN-) - cap ML to normie range
+                    adjusted_ml = min(attractiveness_score, geometric_psl + 12)
+                    print(f"   ⚠️ Geometric < 50: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
+                elif geometric_psl < 60:
+                    # Average geometry (MTN territory) - ML can exceed geometry by limited amount
+                    adjusted_ml = min(attractiveness_score, geometric_psl + 18)
+                    print(f"   ⚠️ Geometric < 60: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
+                # Above 60 geometric: no cap - good bone structure can have high ML
             
-            print(f"\n🎯 FINAL PSL: {psl:.1f} (50% ML + 50% Geometry hybrid)")
+            # HYBRID FORMULA: When FaceStats-only, weight geometry more heavily
+            if facestats_only:
+                # 30% ML + 70% geometry when only FaceStats available (less reliable)
+                psl = 0.30 * adjusted_ml + 0.70 * geometric_psl
+                print(f"\n🎯 FINAL PSL: {psl:.1f} (30% ML + 70% Geometry - FaceStats-only mode)")
+            else:
+                # 50% ML + 50% geometry for multi-model ensemble
+                psl = 0.50 * adjusted_ml + 0.50 * geometric_psl
+                print(f"\n🎯 FINAL PSL: {psl:.1f} (50% ML + 50% Geometry hybrid)")
+            
             print(f"   Adjusted ML: {adjusted_ml:.1f} (after sanity check)")
             print(f"   Geometric: {geometric_psl:.1f}")
-            print(f"   Formula: 0.50 × {adjusted_ml:.1f} + 0.50 × {geometric_psl:.1f} = {psl:.1f}")
+            if facestats_only:
+                print(f"   Formula: 0.30 × {adjusted_ml:.1f} + 0.70 × {geometric_psl:.1f} = {psl:.1f}")
+            else:
+                print(f"   Formula: 0.50 × {adjusted_ml:.1f} + 0.50 × {geometric_psl:.1f} = {psl:.1f}")
         else:
             # Fallback to geometric if ML models fail
             psl = geometric_psl
@@ -2192,11 +2230,20 @@ def calculate_attractiveness_score(image_array):
         weighted_sum = sum(score * weight for _, score, weight in scores)
         avg_score = weighted_sum / total_weight
         
-        print(f"\n🎯 Ensemble Result: {avg_score:.1f} (weighted avg from {len(scores)} model(s))")
-        print(f"   Models used: {', '.join(name for name, _, _ in scores)}")
+        # Track model info for caller to apply appropriate sanity checks
+        model_count = len(scores)
+        models_used = [name for name, _, _ in scores]
+        facestats_only = (model_count == 1 and models_used[0] == 'facestats')
+        
+        print(f"\n🎯 Ensemble Result: {avg_score:.1f} (weighted avg from {model_count} model(s))")
+        print(f"   Models used: {', '.join(models_used)}")
         print(f"   Individual scores: {', '.join(f'{name}={score:.1f}' for name, score, _ in scores)}")
+        if facestats_only:
+            print(f"   ⚠️ WARNING: FaceStats-only mode - stricter sanity checks will apply")
         print("="*60 + "\n")
-        return avg_score
+        
+        # Return tuple: (score, model_count, facestats_only_flag)
+        return (avg_score, model_count, facestats_only)
     
     print("\n⚠️  No ML attractiveness scores available - using geometric only")
     print("="*60 + "\n")
@@ -2552,6 +2599,20 @@ def calculate_beauty_classifier_score(image_array):
             print(f"📦 Beauty-classifier: Loading model from {model_path.name} (not preloaded)...")
             model = BeautyClassifierModel(out_features=512)
             state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
+            
+            # FIX: Remap state_dict keys to add 'model.' prefix
+            # The saved weights have keys like 'conv1.weight' but our model expects 'model.conv1.weight'
+            # because we wrap the ResNet in self.model
+            first_key = list(state_dict.keys())[0] if state_dict else ""
+            if not first_key.startswith("model."):
+                print(f"🔧 Beauty-classifier: Remapping state_dict keys (adding 'model.' prefix)...")
+                new_state_dict = {}
+                for key, value in state_dict.items():
+                    new_key = f"model.{key}"
+                    new_state_dict[new_key] = value
+                state_dict = new_state_dict
+                print(f"   Remapped {len(state_dict)} keys")
+            
             model.load_state_dict(state_dict)
             model.eval()
             _BEAUTY_CLASSIFIER_MODEL = model

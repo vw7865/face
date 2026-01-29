@@ -7,7 +7,7 @@ WORKDIR /app
 # Install system dependencies for OpenCV and MediaPipe
 # OpenCV needs libGL even with headless version in some cases
 # Debian 12 uses libgl1 instead of libgl1-mesa-glx
-# Also install wget for downloading model files
+# Also install wget/unzip for downloading model files
 RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     libgl1 \
@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     libgomp1 \
     wget \
+    unzip \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -92,15 +93,32 @@ RUN pip install -q gdown 2>/dev/null && \
 # Download SCUT-FBP5500 ResNet-18 model (89 MB - PC: 0.89 correlation)
 # Source: https://github.com/HCIILAB/SCUT-FBP5500-Database-Release/issues/11
 # Google Drive pytorch-models.zip: 1tAhZ3i4Pc_P3Fabmg62hGVHwKeSQtYaY
-RUN (gdown "https://drive.google.com/uc?id=1tAhZ3i4Pc_P3Fabmg62hGVHwKeSQtYaY" -O /tmp/pytorch-models.zip --fuzzy 2>&1 || true) && \
-    if [ -f /tmp/pytorch-models.zip ] && [ "$(wc -c < /tmp/pytorch-models.zip)" -gt 50000000 ]; then \
-        unzip -q /tmp/pytorch-models.zip -d /tmp/pytorch-models && \
-        mv /tmp/pytorch-models/resnet18.pth ./models/scut_resnet18.pth && \
-        rm -rf /tmp/pytorch-models /tmp/pytorch-models.zip && \
-        echo "✅ SCUT-ResNet18 model downloaded successfully ($(wc -c < ./models/scut_resnet18.pth | xargs expr / 1024 / 1024)MB)"; \
+RUN echo "📥 Downloading SCUT-ResNet18 model..." && \
+    gdown "https://drive.google.com/uc?id=1tAhZ3i4Pc_P3Fabmg62hGVHwKeSQtYaY" -O /tmp/pytorch-models.zip --fuzzy 2>&1 || echo "gdown failed, trying alternative..." && \
+    if [ -f /tmp/pytorch-models.zip ]; then \
+        SIZE=$(wc -c < /tmp/pytorch-models.zip); \
+        echo "📊 Downloaded file size: $SIZE bytes"; \
+        if [ "$SIZE" -gt 50000000 ]; then \
+            echo "📦 Extracting pytorch-models.zip..."; \
+            unzip -o /tmp/pytorch-models.zip -d /tmp/pytorch-models && \
+            ls -la /tmp/pytorch-models/ && \
+            if [ -f /tmp/pytorch-models/resnet18.pth ]; then \
+                mv /tmp/pytorch-models/resnet18.pth ./models/scut_resnet18.pth && \
+                FINAL_SIZE=$(wc -c < ./models/scut_resnet18.pth) && \
+                echo "✅ SCUT-ResNet18 model installed ($FINAL_SIZE bytes)"; \
+            else \
+                echo "⚠️ resnet18.pth not found in zip, listing contents:" && \
+                find /tmp/pytorch-models -type f && \
+                echo "⚠️ SCUT-ResNet18 not available"; \
+            fi; \
+            rm -rf /tmp/pytorch-models /tmp/pytorch-models.zip; \
+        else \
+            echo "⚠️ Downloaded file too small ($SIZE bytes), may be error page"; \
+            cat /tmp/pytorch-models.zip | head -c 500 || true; \
+            rm -f /tmp/pytorch-models.zip; \
+        fi; \
     else \
-        echo "⚠️ SCUT-ResNet18 download failed - will use other models"; \
-        rm -f /tmp/pytorch-models.zip; \
+        echo "⚠️ SCUT-ResNet18 download failed - file not created"; \
     fi
 
 # Copy local models if available (for development/testing)
