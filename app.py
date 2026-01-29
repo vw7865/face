@@ -2676,35 +2676,16 @@ def calculate_scut_resnet18_score(image_array):
         from PIL import Image
         import pickle
         
-        # Define ResNet-18 architecture for beauty scoring (matches SCUT-FBP5500 paper)
-        class ResNet18Beauty(nn.Module):
-            """ResNet-18 modified for attractiveness regression (1-5 scale output)"""
-            def __init__(self):
-                super(ResNet18Beauty, self).__init__()
-                # Load standard ResNet-18 architecture
-                resnet = models.resnet18(weights=None)  # No pretrained weights, we'll load SCUT weights
-                
-                # Use ResNet feature extraction layers
-                self.features = nn.Sequential(
-                    resnet.conv1,
-                    resnet.bn1,
-                    resnet.relu,
-                    resnet.maxpool,
-                    resnet.layer1,
-                    resnet.layer2,
-                    resnet.layer3,
-                    resnet.layer4,
-                    resnet.avgpool
-                )
-                
-                # Single output for regression (1-5 scale)
-                self.fc = nn.Linear(resnet.fc.in_features, 1)
-            
-            def forward(self, x):
-                x = self.features(x)
-                x = x.view(x.size(0), -1)
-                x = self.fc(x)
-                return x.squeeze(1)
+        # Use standard ResNet-18 directly (don't wrap in custom class)
+        # The SCUT-FBP5500 weights have standard keys: conv1.weight, bn1.weight, layer1.0.conv1.weight, etc.
+        # Our previous ResNet18Beauty class wrapped these in self.features, causing key mismatch
+        def create_scut_resnet18():
+            """Create ResNet-18 for beauty regression with standard architecture"""
+            # Load standard ResNet-18 (keys will match saved weights)
+            model = models.resnet18(weights=None)
+            # Replace final FC for single regression output (1-5 scale)
+            model.fc = nn.Linear(model.fc.in_features, 1)
+            return model
         
         # Convert numpy array to PIL Image
         if isinstance(image_array, np.ndarray):
@@ -2782,18 +2763,36 @@ def calculate_scut_resnet18_score(image_array):
                 print("✅ SCUT-ResNet18: Loaded full model directly")
             
             if _SCUT_RESNET18_MODEL is None:
-                # Need to load into our architecture
-                model = ResNet18Beauty()
+                # Debug: Print state_dict keys to understand structure
+                if isinstance(state_dict, dict):
+                    keys = list(state_dict.keys())[:10]  # First 10 keys
+                    print(f"🔍 SCUT-ResNet18: State dict keys (first 10): {keys}")
                 
-                # Try to load state dict (may need key remapping)
+                # Create model with standard ResNet-18 architecture
+                model = create_scut_resnet18()
+                
+                # Try to load state dict
                 try:
                     model.load_state_dict(state_dict, strict=True)
                     print("✅ SCUT-ResNet18: State dict loaded (strict=True)")
                 except RuntimeError as e:
-                    print(f"⚠️ SCUT-ResNet18: Strict load failed, trying flexible load...")
-                    # Try loading with strict=False and see what loads
-                    model.load_state_dict(state_dict, strict=False)
-                    print("✅ SCUT-ResNet18: State dict loaded (strict=False)")
+                    print(f"⚠️ SCUT-ResNet18: Strict load failed: {e}")
+                    
+                    # Check if keys need remapping (e.g., module. prefix from DataParallel)
+                    if any(k.startswith('module.') for k in state_dict.keys()):
+                        print("🔧 SCUT-ResNet18: Removing 'module.' prefix from keys...")
+                        state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
+                        try:
+                            model.load_state_dict(state_dict, strict=True)
+                            print("✅ SCUT-ResNet18: State dict loaded after removing 'module.' prefix")
+                        except RuntimeError as e2:
+                            print(f"⚠️ SCUT-ResNet18: Still failed after prefix removal: {e2}")
+                            model.load_state_dict(state_dict, strict=False)
+                            print("✅ SCUT-ResNet18: State dict loaded (strict=False) - some weights may be missing!")
+                    else:
+                        # Try strict=False as last resort
+                        model.load_state_dict(state_dict, strict=False)
+                        print("✅ SCUT-ResNet18: State dict loaded (strict=False) - some weights may be missing!")
                 
                 model.eval()
                 _SCUT_RESNET18_MODEL = model
@@ -2805,9 +2804,18 @@ def calculate_scut_resnet18_score(image_array):
         print("🔮 SCUT-ResNet18: Running prediction...")
         with torch.no_grad():
             output = model(image_tensor)
+            # Standard ResNet with fc(512,1) outputs shape [batch, 1]
+            # Squeeze to get scalar
+            if output.dim() > 0:
+                output = output.squeeze()
             raw_score = output.item() if hasattr(output, 'item') else float(output)
         
         print(f"📊 SCUT-ResNet18: Raw prediction (1-5 scale) = {raw_score:.4f}")
+        
+        # Sanity check: if output is way outside 1-5 range, log warning
+        if raw_score < 0 or raw_score > 6:
+            print(f"⚠️ SCUT-ResNet18: Output {raw_score:.4f} is outside expected 1-5 range!")
+            print(f"   This may indicate weight loading issues or architecture mismatch")
         
         # Clamp to valid 1-5 range (model should output this range)
         score_5 = max(1.0, min(5.0, raw_score))
