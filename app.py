@@ -2457,24 +2457,32 @@ def calculate_facestats_score(image_array):
             # Based on observed scores:
             # - Attractive faces: raw ~2.0-2.4 → should score 70-85
             # - Average faces: raw ~2.5-2.7 → should score 40-60
-            # - Below-average: raw ~2.8+ → should score 20-40
+            # - Below-average: raw ~1.5-2.3 → should score 20-40
+            # - Average: raw ~2.4-2.6 → should score 40-60
+            # - Above-average: raw ~2.7-3.5 → should score 60-80
+            # - Very attractive: raw ~3.5-5.0 → should score 80-90
             #
             # Use sigmoid function centered at 2.5 with steepness to create clear separation
             # This naturally handles outliers and creates better distinction
             
-            center = 2.5  # Center point (average attractiveness)
-            steepness = 8.0  # Steepness factor (higher = more separation)
+            center = 2.5  # Center point (average attractiveness on 1-5 scale)
+            steepness = 3.0  # Steepness factor (lower = more gradual transition)
             
-            # Sigmoid: 1 / (1 + exp(-steepness * (center - raw)))
-            # This maps: raw < center → higher score, raw > center → lower score
-            sigmoid = 1.0 / (1.0 + np.exp(-steepness * (center - raw_score)))
+            # Sigmoid: 1 / (1 + exp(-steepness * (raw - center)))
+            # This maps: raw < center → lower score, raw > center → higher score
+            # CRITICAL: raw_score - center (NOT center - raw_score)
+            # On 1-5 scale: 1=ugly, 5=beautiful, so higher raw = higher final score
+            sigmoid = 1.0 / (1.0 + np.exp(-steepness * (raw_score - center)))
             
-            # Map sigmoid (0-1) to 0-100 scale, then shift to 20-90 range for realism
+            # Map sigmoid (0-1) to 20-90 range for realism
+            # raw=1.0 → sigmoid≈0.01 → score≈21
+            # raw=2.5 → sigmoid=0.5 → score=55
+            # raw=4.0 → sigmoid≈0.99 → score≈89
             score = 20.0 + (sigmoid * 70.0)  # 0→20, 1→90
             score = float(np.clip(score, 0.0, 100.0))
             
-            print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f}, sigmoid mapping centered at {center})")
-            print(f"   Sigmoid value: {sigmoid:.3f} (higher = more attractive)")
+            print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f} on 1-5 scale, center={center})")
+            print(f"   Sigmoid value: {sigmoid:.3f} (raw < {center} → low score, raw > {center} → high score)")
             return score
             
         finally:
@@ -2739,12 +2747,28 @@ def calculate_scut_resnet18_score(image_array):
             
             # Load weights with Python 2 compatibility (encoding='latin1')
             # The SCUT-FBP5500 weights were saved in Python 2
-            state_dict = torch.load(
-                model_path, 
-                map_location='cpu', 
-                pickle_module=pickle,
-                weights_only=False
-            )
+            # Must use encoding='latin1' to decode Python 2 pickle strings
+            try:
+                state_dict = torch.load(
+                    model_path, 
+                    map_location='cpu', 
+                    weights_only=False,
+                    encoding='latin1'
+                )
+                print("✅ SCUT-ResNet18: Loaded with encoding='latin1'")
+            except TypeError:
+                # Fallback for older PyTorch versions without encoding parameter
+                print("⚠️ SCUT-ResNet18: Trying fallback loading method...")
+                import functools
+                old_load = pickle.load
+                pickle.load = functools.partial(old_load, encoding='latin1')
+                state_dict = torch.load(
+                    model_path, 
+                    map_location='cpu', 
+                    weights_only=False
+                )
+                pickle.load = old_load
+                print("✅ SCUT-ResNet18: Loaded with pickle fallback")
             
             # Handle different save formats
             # Some checkpoints save the full model, others just state_dict
