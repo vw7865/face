@@ -89,8 +89,21 @@ RUN pip install -q gdown 2>/dev/null && \
         echo "⚠️ Beauty-classifier model not available (optional - app works with FaceStats only)"; \
     fi
 
-# Note: Model files are downloaded from GitHub above (FaceStats model)
-# If you have additional local model files, uncomment the line below:
+# Download SCUT-FBP5500 ResNet-18 model (89 MB - PC: 0.89 correlation)
+# Source: https://github.com/HCIILAB/SCUT-FBP5500-Database-Release/issues/11
+# Google Drive pytorch-models.zip: 1tAhZ3i4Pc_P3Fabmg62hGVHwKeSQtYaY
+RUN (gdown "https://drive.google.com/uc?id=1tAhZ3i4Pc_P3Fabmg62hGVHwKeSQtYaY" -O /tmp/pytorch-models.zip --fuzzy 2>&1 || true) && \
+    if [ -f /tmp/pytorch-models.zip ] && [ "$(wc -c < /tmp/pytorch-models.zip)" -gt 50000000 ]; then \
+        unzip -q /tmp/pytorch-models.zip -d /tmp/pytorch-models && \
+        mv /tmp/pytorch-models/resnet18.pth ./models/scut_resnet18.pth && \
+        rm -rf /tmp/pytorch-models /tmp/pytorch-models.zip && \
+        echo "✅ SCUT-ResNet18 model downloaded successfully ($(wc -c < ./models/scut_resnet18.pth | xargs expr / 1024 / 1024)MB)"; \
+    else \
+        echo "⚠️ SCUT-ResNet18 download failed - will use other models"; \
+        rm -f /tmp/pytorch-models.zip; \
+    fi
+
+# Copy local models if available (for development/testing)
 # COPY models/ ./models/
 
 # Expose port
