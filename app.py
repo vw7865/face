@@ -2068,22 +2068,22 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
                     print(f"   ⚠️ Geometric < 60: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
                 # Above 60 geometric: no cap - good bone structure can have high ML
             
-            # HYBRID FORMULA: When FaceStats-only, weight geometry more heavily
+            # HYBRID FORMULA: Weight ML more heavily since FaceStats has best discrimination
             if facestats_only:
                 # 30% ML + 70% geometry when only FaceStats available (less reliable)
                 psl = 0.30 * adjusted_ml + 0.70 * geometric_psl
                 print(f"\n🎯 FINAL PSL: {psl:.1f} (30% ML + 70% Geometry - FaceStats-only mode)")
             else:
-                # 50% ML + 50% geometry for multi-model ensemble
-                psl = 0.50 * adjusted_ml + 0.50 * geometric_psl
-                print(f"\n🎯 FINAL PSL: {psl:.1f} (50% ML + 50% Geometry hybrid)")
+                # 70% ML + 30% geometry for multi-model ensemble (FaceStats-weighted)
+                psl = 0.70 * adjusted_ml + 0.30 * geometric_psl
+                print(f"\n🎯 FINAL PSL: {psl:.1f} (70% ML + 30% Geometry hybrid)")
             
             print(f"   Adjusted ML: {adjusted_ml:.1f} (after sanity check)")
             print(f"   Geometric: {geometric_psl:.1f}")
             if facestats_only:
                 print(f"   Formula: 0.30 × {adjusted_ml:.1f} + 0.70 × {geometric_psl:.1f} = {psl:.1f}")
             else:
-                print(f"   Formula: 0.50 × {adjusted_ml:.1f} + 0.50 × {geometric_psl:.1f} = {psl:.1f}")
+                print(f"   Formula: 0.70 × {adjusted_ml:.1f} + 0.30 × {geometric_psl:.1f} = {psl:.1f}")
         else:
             # Fallback to geometric if ML models fail
             psl = geometric_psl
@@ -2196,21 +2196,21 @@ def calculate_attractiveness_score(image_array):
 
     scores = []
     
-    # Try SCUT-ResNet18 (trained on Chinese faces - less reliable for general use)
+    # Try SCUT-ResNet18 (trained on Chinese faces - poor discrimination, tends to give ~50)
     print("\n📊 Attempting SCUT-ResNet18 scoring...")
     scut_score = calculate_scut_resnet18_score(image_array)
     if scut_score is not None:
-        scores.append(('scut_resnet18', scut_score, 0.5))  # Weight 0.5 (lowest - tends to inflate scores)
-        print(f"✅ SCUT-ResNet18 contributed: {scut_score:.1f} (weight: 0.5)")
+        scores.append(('scut_resnet18', scut_score, 0.25))  # Weight 0.25 (lowest - always gives ~50, poor discrimination)
+        print(f"✅ SCUT-ResNet18 contributed: {scut_score:.1f} (weight: 0.25)")
     else:
         print("❌ SCUT-ResNet18: No score (model not found or error)")
     
-    # Try Beauty-classifier (ResNet-50 on SCUT-FBP5500) - gives middle scores
+    # Try Beauty-classifier (ResNet-50 on SCUT-FBP5500) - poor discrimination, gives ~50
     print("\n📊 Attempting Beauty-classifier scoring...")
     beauty_score = calculate_beauty_classifier_score(image_array)
     if beauty_score is not None:
-        scores.append(('beauty_classifier', beauty_score, 1.0))  # Weight 1.0 (medium)
-        print(f"✅ Beauty-classifier contributed: {beauty_score:.1f} (weight: 1.0)")
+        scores.append(('beauty_classifier', beauty_score, 0.5))  # Weight 0.5 (low - poor discrimination)
+        print(f"✅ Beauty-classifier contributed: {beauty_score:.1f} (weight: 0.5)")
     else:
         print("❌ Beauty-classifier: No score (model not found or error)")
     
@@ -2218,8 +2218,8 @@ def calculate_attractiveness_score(image_array):
     print("\n📊 Attempting FaceStats scoring...")
     facestats_score = calculate_facestats_score(image_array)
     if facestats_score is not None:
-        scores.append(('facestats', facestats_score, 2.0))  # Weight 2.0 (highest - best discrimination)
-        print(f"✅ FaceStats contributed: {facestats_score:.1f} (weight: 2.0)")
+        scores.append(('facestats', facestats_score, 3.0))  # Weight 3.0 (highest - only model with real discrimination)
+        print(f"✅ FaceStats contributed: {facestats_score:.1f} (weight: 3.0)")
     else:
         print("❌ FaceStats: No score (model not found or error)")
     
