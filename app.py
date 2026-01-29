@@ -2196,30 +2196,30 @@ def calculate_attractiveness_score(image_array):
 
     scores = []
     
-    # Try SCUT-ResNet18 FIRST (most accurate - PC: 0.89)
-    print("\n📊 Attempting SCUT-ResNet18 scoring (PC: 0.89)...")
+    # Try SCUT-ResNet18 (trained on Chinese faces - less reliable for general use)
+    print("\n📊 Attempting SCUT-ResNet18 scoring...")
     scut_score = calculate_scut_resnet18_score(image_array)
     if scut_score is not None:
-        scores.append(('scut_resnet18', scut_score, 2.0))  # Weight 2.0 (highest priority)
-        print(f"✅ SCUT-ResNet18 contributed: {scut_score:.1f} (weight: 2.0)")
+        scores.append(('scut_resnet18', scut_score, 0.5))  # Weight 0.5 (lowest - tends to inflate scores)
+        print(f"✅ SCUT-ResNet18 contributed: {scut_score:.1f} (weight: 0.5)")
     else:
         print("❌ SCUT-ResNet18: No score (model not found or error)")
     
-    # Try Beauty-classifier (ResNet-50 on SCUT-FBP5500)
+    # Try Beauty-classifier (ResNet-50 on SCUT-FBP5500) - gives middle scores
     print("\n📊 Attempting Beauty-classifier scoring...")
     beauty_score = calculate_beauty_classifier_score(image_array)
     if beauty_score is not None:
-        scores.append(('beauty_classifier', beauty_score, 1.5))  # Weight 1.5
-        print(f"✅ Beauty-classifier contributed: {beauty_score:.1f} (weight: 1.5)")
+        scores.append(('beauty_classifier', beauty_score, 1.0))  # Weight 1.0 (medium)
+        print(f"✅ Beauty-classifier contributed: {beauty_score:.1f} (weight: 1.0)")
     else:
         print("❌ Beauty-classifier: No score (model not found or error)")
     
-    # Try FaceStats (CLIP + MLP) - lowest priority due to accuracy issues
+    # Try FaceStats (CLIP + MLP) - HIGHEST priority due to best discrimination
     print("\n📊 Attempting FaceStats scoring...")
     facestats_score = calculate_facestats_score(image_array)
     if facestats_score is not None:
-        scores.append(('facestats', facestats_score, 1.0))  # Weight 1.0 (lowest)
-        print(f"✅ FaceStats contributed: {facestats_score:.1f} (weight: 1.0)")
+        scores.append(('facestats', facestats_score, 2.0))  # Weight 2.0 (highest - best discrimination)
+        print(f"✅ FaceStats contributed: {facestats_score:.1f} (weight: 2.0)")
     else:
         print("❌ FaceStats: No score (model not found or error)")
     
