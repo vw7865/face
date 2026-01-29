@@ -2011,18 +2011,42 @@ def calculate_all_metrics(front_landmarks, side_landmarks, gender='Male', front_
         if front_image_array is not None:
             attractiveness_score = calculate_attractiveness_score(front_image_array)
         
-        # Use 100% ML models for PSL (most accurate)
-        # ML models (FaceStats) are trained on human-rated attractiveness data and capture holistic appeal
-        # Geometric measurements are kept for detailed breakdowns but don't affect PSL
-        # This ensures attractive faces get proper scores without being dragged down by geometric calibration issues
+        # HYBRID SCORING: 50% ML + 50% Geometry with sanity checks
+        # This ensures:
+        # 1. Poor bone structure cannot be rated "Chad" regardless of ML score
+        # 2. Good bone structure + good ML = high score
+        # 3. Subscores (geometric) actually influence the overall rating
         if attractiveness_score is not None:
-            # Pure ML: 100% ML score (most accurate for attractiveness)
-            psl = attractiveness_score
-            print(f"\n🎯 FINAL PSL: {psl:.1f} (100% ML model - FaceStats)")
-            print(f"   ML PSL (FaceStats): {attractiveness_score:.1f} (holistic attractiveness from human-rated data)")
-            print(f"   Geometric PSL (reference only): {geometric_psl:.1f} (shown in breakdown but not used for PSL)")
+            print(f"\n🔍 SCORING INPUTS:")
+            print(f"   Raw ML score: {attractiveness_score:.1f}")
+            print(f"   Raw Geometric score: {geometric_psl:.1f}")
+            
+            # SANITY CHECK: Cap ML score based on geometric foundation
+            # Someone with poor bone structure cannot be a Chad regardless of soft features
+            adjusted_ml = attractiveness_score
+            if geometric_psl < 40:
+                # Very poor geometry (subhuman/LTN territory) - hard cap ML
+                adjusted_ml = min(attractiveness_score, 50.0)
+                print(f"   ⚠️ Geometric < 40: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
+            elif geometric_psl < 50:
+                # Below average geometry (LTN/MTN-) - cap ML to normie range
+                adjusted_ml = min(attractiveness_score, geometric_psl + 12)
+                print(f"   ⚠️ Geometric < 50: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
+            elif geometric_psl < 60:
+                # Average geometry (MTN territory) - ML can exceed geometry by limited amount
+                adjusted_ml = min(attractiveness_score, geometric_psl + 18)
+                print(f"   ⚠️ Geometric < 60: Capping ML from {attractiveness_score:.1f} to {adjusted_ml:.1f}")
+            # Above 60 geometric: no cap - good bone structure can have high ML
+            
+            # HYBRID FORMULA: 50% adjusted ML + 50% geometry
+            psl = 0.50 * adjusted_ml + 0.50 * geometric_psl
+            
+            print(f"\n🎯 FINAL PSL: {psl:.1f} (50% ML + 50% Geometry hybrid)")
+            print(f"   Adjusted ML: {adjusted_ml:.1f} (after sanity check)")
+            print(f"   Geometric: {geometric_psl:.1f}")
+            print(f"   Formula: 0.50 × {adjusted_ml:.1f} + 0.50 × {geometric_psl:.1f} = {psl:.1f}")
         else:
-            # Fallback to geometric if ML models fail (shouldn't happen in production)
+            # Fallback to geometric if ML models fail
             psl = geometric_psl
             print(f"\n⚠️  Using geometric PSL fallback: {psl:.1f} (ML models not available)")
             print(f"   This is less accurate - check Railway logs for ML model errors")
