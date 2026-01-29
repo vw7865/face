@@ -2771,6 +2771,29 @@ def calculate_scut_resnet18_score(image_array):
                 # Create model with standard ResNet-18 architecture
                 model = create_scut_resnet18()
                 
+                # Key remapping function for SCUT-FBP5500 custom architecture
+                # The saved weights use: group1.conv1.weight, layer1.0.group1.conv1.weight, group2.fullyconnected.weight
+                # Standard ResNet-18 uses: conv1.weight, layer1.0.conv1.weight, fc.weight
+                def remap_scut_keys(state_dict):
+                    """Remap SCUT-FBP5500 custom keys to standard ResNet-18 keys"""
+                    new_state_dict = {}
+                    for k, v in state_dict.items():
+                        new_key = k
+                        # Handle group2.fullyconnected -> fc
+                        if k.startswith('group2.fullyconnected'):
+                            new_key = k.replace('group2.fullyconnected', 'fc')
+                        # Handle group1.conv1 -> conv1, group1.bn1 -> bn1 (initial layers)
+                        elif k.startswith('group1.'):
+                            new_key = k[7:]  # Remove 'group1.' prefix
+                        # Handle layer1.0.group1.conv1 -> layer1.0.conv1 (residual blocks)
+                        elif '.group1.' in k:
+                            new_key = k.replace('.group1.', '.')
+                        new_state_dict[new_key] = v
+                    return new_state_dict
+                
+                # Check if this is the SCUT-FBP5500 custom format
+                needs_scut_remapping = any(k.startswith('group1.') or '.group1.' in k for k in state_dict.keys())
+                
                 # Try to load state dict
                 try:
                     model.load_state_dict(state_dict, strict=True)
@@ -2778,8 +2801,21 @@ def calculate_scut_resnet18_score(image_array):
                 except RuntimeError as e:
                     print(f"⚠️ SCUT-ResNet18: Strict load failed: {e}")
                     
+                    # Try SCUT-FBP5500 key remapping (group1.X -> X, group2.fullyconnected -> fc)
+                    if needs_scut_remapping:
+                        print("🔧 SCUT-ResNet18: Detected SCUT-FBP5500 custom key format, remapping...")
+                        remapped_dict = remap_scut_keys(state_dict)
+                        remapped_keys_sample = list(remapped_dict.keys())[:5]
+                        print(f"   Remapped keys (first 5): {remapped_keys_sample}")
+                        try:
+                            model.load_state_dict(remapped_dict, strict=True)
+                            print("✅ SCUT-ResNet18: State dict loaded after SCUT key remapping")
+                        except RuntimeError as e2:
+                            print(f"⚠️ SCUT-ResNet18: Still failed after SCUT remapping: {e2}")
+                            model.load_state_dict(remapped_dict, strict=False)
+                            print("✅ SCUT-ResNet18: State dict loaded (strict=False after remapping)")
                     # Check if keys need remapping (e.g., module. prefix from DataParallel)
-                    if any(k.startswith('module.') for k in state_dict.keys()):
+                    elif any(k.startswith('module.') for k in state_dict.keys()):
                         print("🔧 SCUT-ResNet18: Removing 'module.' prefix from keys...")
                         state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
                         try:
