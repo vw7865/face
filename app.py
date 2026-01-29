@@ -2457,16 +2457,20 @@ def calculate_facestats_score(image_array):
             # Based on observed scores:
             # - Attractive faces: raw ~2.0-2.4 → should score 70-85
             # - Average faces: raw ~2.5-2.7 → should score 40-60
-            # - Below-average: raw ~1.5-2.3 → should score 20-40
-            # - Average: raw ~2.4-2.6 → should score 40-60
-            # - Above-average: raw ~2.7-3.5 → should score 60-80
-            # - Very attractive: raw ~3.5-5.0 → should score 80-90
+            # - Unattractive: raw ~1.5-2.0 → should score 10-25
+            # - Below-average: raw ~2.0-2.3 → should score 25-45
+            # - Average: raw ~2.3-2.5 → should score 45-60
+            # - Above-average: raw ~2.5-2.8 → should score 60-75
+            # - Attractive: raw ~2.8-3.5 → should score 75-90
+            # - Very attractive: raw ~3.5-5.0 → should score 90-95
             #
-            # Use sigmoid function centered at 2.5 with steepness to create clear separation
-            # This naturally handles outliers and creates better distinction
+            # Use sigmoid function with adjusted parameters for better separation:
+            # - Center shifted down to 2.3 (recalibrate what "average" means)
+            # - Steepness increased to 4.5 (sharper distinction between scores)
+            # - Output range expanded to 10-95 (allow more extreme scores)
             
-            center = 2.5  # Center point (average attractiveness on 1-5 scale)
-            steepness = 3.0  # Steepness factor (lower = more gradual transition)
+            center = 2.3  # Center point (shifted down - FaceStats model outputs narrow range)
+            steepness = 4.5  # Steepness factor (increased for sharper separation)
             
             # Sigmoid: 1 / (1 + exp(-steepness * (raw - center)))
             # This maps: raw < center → lower score, raw > center → higher score
@@ -2474,14 +2478,17 @@ def calculate_facestats_score(image_array):
             # On 1-5 scale: 1=ugly, 5=beautiful, so higher raw = higher final score
             sigmoid = 1.0 / (1.0 + np.exp(-steepness * (raw_score - center)))
             
-            # Map sigmoid (0-1) to 20-90 range for realism
-            # raw=1.0 → sigmoid≈0.01 → score≈21
-            # raw=2.5 → sigmoid=0.5 → score=55
-            # raw=4.0 → sigmoid≈0.99 → score≈89
-            score = 20.0 + (sigmoid * 70.0)  # 0→20, 1→90
+            # Map sigmoid (0-1) to 10-95 range for better spread
+            # raw=1.5 → sigmoid≈0.03 → score≈13
+            # raw=2.0 → sigmoid≈0.20 → score≈27
+            # raw=2.3 → sigmoid=0.5 → score=52
+            # raw=2.5 → sigmoid≈0.71 → score≈70
+            # raw=2.8 → sigmoid≈0.90 → score≈86
+            # raw=3.5 → sigmoid≈0.995 → score≈95
+            score = 10.0 + (sigmoid * 85.0)  # 0→10, 1→95
             score = float(np.clip(score, 0.0, 100.0))
             
-            print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f} on 1-5 scale, center={center})")
+            print(f"✅ FaceStats: Final score = {score:.1f} (raw: {raw_score:.4f} on 1-5 scale, center={center}, steepness={steepness})")
             print(f"   Sigmoid value: {sigmoid:.3f} (raw < {center} → low score, raw > {center} → high score)")
             return score
             
