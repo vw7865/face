@@ -27,15 +27,13 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 # Copy requirements first for better Docker layer caching
 COPY requirements.txt .
 
-# Install Python dependencies in stages to optimize caching
-# Install lighter dependencies first
-# Cache bust v3: Force rebuild for NumPy fix
+# Install Python dependencies - NumPy MUST be 1.24.x for TensorFlow 2.13.1
 RUN pip install --no-cache-dir \
     "setuptools>=65.0.0" \
     wheel \
     "Flask==3.0.0" \
     "flask-cors==4.0.0" \
-    "numpy>=1.24.0,<1.25.0" \
+    "numpy==1.24.4" \
     "Pillow>=10.0.0" \
     "gunicorn==21.2.0" \
     "requests>=2.31.0" \
