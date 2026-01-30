@@ -65,6 +65,18 @@ RUN pip install --no-cache-dir "deepface>=0.0.79"
 RUN pip install --no-cache-dir "numpy==1.24.4" --force-reinstall && \
     python -c "import numpy; print(f'✅ NumPy version: {numpy.__version__}')"
 
+# Verify all imports work at build time (catches compatibility issues early)
+RUN python -c "\
+import sys; \
+print('Testing imports...'); \
+import numpy; print(f'✅ NumPy {numpy.__version__}'); \
+import cv2; print(f'✅ OpenCV {cv2.__version__}'); \
+import mediapipe; print(f'✅ MediaPipe {mediapipe.__version__}'); \
+import tensorflow as tf; print(f'✅ TensorFlow {tf.__version__}'); \
+from tensorflow import keras; print('✅ Keras loaded'); \
+print('All imports successful!'); \
+"
+
 # Copy application and configuration files
 COPY app.py .
 COPY runtime.txt* .
