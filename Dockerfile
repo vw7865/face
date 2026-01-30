@@ -59,6 +59,11 @@ RUN pip install --no-cache-dir "tensorflow==2.13.1"
 # Install deepface (depends on torch)
 RUN pip install --no-cache-dir "deepface>=0.0.79"
 
+# CRITICAL: Force NumPy to 1.24.x AFTER all installs
+# Some packages (mediapipe, deepface) may upgrade NumPy to 2.x which breaks TensorFlow 2.13
+RUN pip install --no-cache-dir "numpy==1.24.4" --force-reinstall && \
+    python -c "import numpy; print(f'✅ NumPy version: {numpy.__version__}')"
+
 # Copy application and configuration files
 COPY app.py .
 COPY runtime.txt* .
