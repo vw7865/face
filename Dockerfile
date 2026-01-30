@@ -41,9 +41,10 @@ RUN pip install --no-cache-dir \
     "openai>=1.0.0"
 
 # Install heavy ML dependencies
+# MediaPipe 0.10.9 is the last version compiled against NumPy 1.x
 RUN pip install --no-cache-dir \
     "opencv-python-headless>=4.8.0" \
-    "mediapipe==0.10.21" \
+    "mediapipe==0.10.9" \
     "scikit-learn>=1.3.0"
 
 # Install PyTorch (CPU-only, smaller and faster)
