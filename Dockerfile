@@ -2,7 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Retry deployment
+# Cache bust: v3 - Force NumPy 1.24.4 for TensorFlow 2.13.1 compatibility
+ARG CACHEBUST=3
 
 # Install system dependencies for OpenCV and MediaPipe
 # OpenCV needs libGL even with headless version in some cases
@@ -28,6 +29,7 @@ COPY requirements.txt .
 
 # Install Python dependencies in stages to optimize caching
 # Install lighter dependencies first
+# Cache bust v3: Force rebuild for NumPy fix
 RUN pip install --no-cache-dir \
     "setuptools>=65.0.0" \
     wheel \
