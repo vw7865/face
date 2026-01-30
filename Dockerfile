@@ -33,7 +33,7 @@ RUN pip install --no-cache-dir \
     wheel \
     "Flask==3.0.0" \
     "flask-cors==4.0.0" \
-    "numpy>=1.24.0,<2.0.0" \
+    "numpy>=1.24.0,<1.25.0" \
     "Pillow>=10.0.0" \
     "gunicorn==21.2.0" \
     "requests>=2.31.0" \
