@@ -42,10 +42,12 @@ RUN pip install --no-cache-dir \
 # ============================================================================
 # CRITICAL: TensorFlow 2.15.0 + Keras 2.15.0 for .h5 model compatibility
 # TF 2.16+ uses Keras 3.x which CANNOT load old .h5 models
+# h5py is REQUIRED to load .h5 model files
 # ============================================================================
 RUN pip install --no-cache-dir \
     "numpy==1.26.4" \
     "protobuf==3.20.3" \
+    "h5py>=3.0.0" \
     "tensorflow==2.15.0" \
     "keras==2.15.0"
 
@@ -84,6 +86,7 @@ print('=== VERIFICATION ==='); \
 import numpy; \
 assert numpy.__version__ == '1.26.4', f'Wrong NumPy: {numpy.__version__}'; \
 print(f'✅ NumPy: {numpy.__version__}'); \
+import h5py; print(f'✅ h5py: {h5py.__version__}'); \
 import tensorflow as tf; \
 assert tf.__version__ == '2.15.0', f'Wrong TensorFlow: {tf.__version__}'; \
 print(f'✅ TensorFlow: {tf.__version__}'); \
