@@ -27,13 +27,13 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 # Copy requirements first for better Docker layer caching
 COPY requirements.txt .
 
-# Install Python dependencies - NumPy MUST be 1.24.x for TensorFlow 2.13.1
+# Install Python dependencies - NumPy 1.26.x for TensorFlow 2.15.0
 RUN pip install --no-cache-dir \
     "setuptools>=65.0.0" \
     wheel \
     "Flask==3.0.0" \
     "flask-cors==4.0.0" \
-    "numpy==1.24.4" \
+    "numpy==1.26.4" \
     "Pillow>=10.0.0" \
     "gunicorn==21.2.0" \
     "requests>=2.31.0" \
@@ -53,16 +53,17 @@ RUN pip install --no-cache-dir \
     "torchvision>=0.15.0" \
     --index-url https://download.pytorch.org/whl/cpu
 
-# Install TensorFlow 2.13.x (for AttractiveNet MobileNetV2 model)
-# MUST use 2.13.x - newer versions (2.16+) use Keras 3 which is incompatible with old .h5 models
-RUN pip install --no-cache-dir "tensorflow==2.13.1"
+# Install TensorFlow 2.15.0 (for AttractiveNet MobileNetV2 model)
+# TF 2.15 is the LAST version with Keras 2.x (compatible with old .h5 models)
+# TF 2.16+ uses Keras 3 which breaks old model format
+RUN pip install --no-cache-dir "tensorflow==2.15.0"
 
 # Install deepface (depends on torch)
 RUN pip install --no-cache-dir "deepface>=0.0.79"
 
-# CRITICAL: Force NumPy to 1.24.x AFTER all installs
-# Some packages (mediapipe, deepface) may upgrade NumPy to 2.x which breaks TensorFlow 2.13
-RUN pip install --no-cache-dir "numpy==1.24.4" --force-reinstall && \
+# CRITICAL: Force NumPy to 1.26.x AFTER all installs
+# Some packages may upgrade NumPy to 2.x which can cause issues
+RUN pip install --no-cache-dir "numpy==1.26.4" --force-reinstall && \
     python -c "import numpy; print(f'✅ NumPy version: {numpy.__version__}')"
 
 # Verify all imports work at build time (catches compatibility issues early)
