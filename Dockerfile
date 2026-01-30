@@ -87,7 +87,7 @@ print(f'✅ NumPy: {numpy.__version__}'); \
 import tensorflow as tf; \
 assert tf.__version__ == '2.15.0', f'Wrong TensorFlow: {tf.__version__}'; \
 print(f'✅ TensorFlow: {tf.__version__}'); \
-from tensorflow import keras; \
+import keras; \
 assert keras.__version__ == '2.15.0', f'Wrong Keras: {keras.__version__}'; \
 print(f'✅ Keras: {keras.__version__}'); \
 import cv2; print(f'✅ OpenCV: {cv2.__version__}'); \
